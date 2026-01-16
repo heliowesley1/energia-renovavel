@@ -31,12 +31,32 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
-import { UserCog, Plus, Edit, Trash2, Shield, User as UserIcon } from 'lucide-react';
+import { 
+  UserCog, 
+  Plus, 
+  Edit, 
+  Trash2, 
+  Shield, 
+  User as UserIcon, 
+  Search, 
+  KeyRound,
+  Power,
+  Ban
+} from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { cn } from '@/lib/utils';
 
 const UserManagement: React.FC = () => {
   const { toast } = useToast();
   const [users, setUsers] = useState<User[]>(mockUsers);
+  
+  // Filtros
+  const [searchTerm, setSearchTerm] = useState('');
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'user'>('all');
+  const [sectorFilter, setSectorFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
+  // Dialog
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState({
@@ -44,10 +64,11 @@ const UserManagement: React.FC = () => {
     email: '',
     role: 'user' as 'admin' | 'user',
     sectorId: '',
+    password: '', 
   });
 
   const resetForm = () => {
-    setFormData({ name: '', email: '', role: 'user', sectorId: '' });
+    setFormData({ name: '', email: '', role: 'user', sectorId: '', password: '' });
     setEditingUser(null);
   };
 
@@ -59,6 +80,7 @@ const UserManagement: React.FC = () => {
         email: user.email,
         role: user.role,
         sectorId: user.sectorId || '',
+        password: '',
       });
     } else {
       resetForm();
@@ -69,29 +91,40 @@ const UserManagement: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (!formData.sectorId) {
+      toast({
+        title: "Campo obrigatório",
+        description: "Por favor, selecione um setor para o usuário.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     if (editingUser) {
       setUsers((prev) =>
         prev.map((u) =>
           u.id === editingUser.id
-            ? { ...u, ...formData }
+            ? { 
+                ...u, 
+                ...formData,
+                password: formData.password ? formData.password : u.password 
+              }
             : u
         )
       );
-      toast({
-        title: 'Usuário atualizado!',
-        description: 'As informações foram salvas com sucesso.',
-      });
+      toast({ title: 'Usuário atualizado!' });
     } else {
       const newUser: User = {
         id: String(Date.now()),
-        ...formData,
-        sectorId: formData.role === 'admin' ? undefined : formData.sectorId,
+        name: formData.name,
+        email: formData.email,
+        role: formData.role,
+        sectorId: formData.sectorId,
+        password: formData.password,
+        active: true, // Usuários novos nascem ativos
       };
       setUsers((prev) => [...prev, newUser]);
-      toast({
-        title: 'Usuário criado!',
-        description: 'O novo usuário foi adicionado com sucesso.',
-      });
+      toast({ title: 'Usuário criado!' });
     }
 
     setIsDialogOpen(false);
@@ -100,9 +133,19 @@ const UserManagement: React.FC = () => {
 
   const handleDelete = (id: string) => {
     setUsers((prev) => prev.filter((u) => u.id !== id));
+    toast({ title: 'Usuário excluído permanentemente' });
+  };
+
+  // Nova função para alternar status
+  const handleToggleStatus = (user: User) => {
+    const newStatus = !user.active;
+    setUsers((prev) => 
+      prev.map((u) => u.id === user.id ? { ...u, active: newStatus } : u)
+    );
     toast({
-      title: 'Usuário removido',
-      description: 'O usuário foi excluído com sucesso.',
+      title: newStatus ? 'Usuário Ativado' : 'Usuário Inativado',
+      description: `O acesso de ${user.name} foi ${newStatus ? 'liberado' : 'bloqueado'}.`,
+      variant: newStatus ? 'default' : 'destructive',
     });
   };
 
@@ -111,20 +154,33 @@ const UserManagement: React.FC = () => {
     return mockSectors.find((s) => s.id === sectorId)?.name || 'N/A';
   };
 
-  const adminCount = users.filter((u) => u.role === 'admin').length;
-  const userCount = users.filter((u) => u.role === 'user').length;
+  // Filtragem
+  const filteredUsers = users.filter((user) => {
+    const matchesSearch = user.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+                          user.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesRole = roleFilter === 'all' || user.role === roleFilter;
+    const matchesSector = sectorFilter === 'all' || user.sectorId === sectorFilter;
+    const matchesStatus = statusFilter === 'all' 
+      ? true 
+      : statusFilter === 'active' ? user.active 
+      : !user.active;
+    
+    return matchesSearch && matchesRole && matchesSector && matchesStatus;
+  });
+
+  const activeCount = users.filter(u => u.active).length;
+  const inactiveCount = users.filter(u => !u.active).length;
 
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in">
-        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">
               Gestão de Usuários
             </h1>
             <p className="text-muted-foreground mt-1">
-              Crie e gerencie os usuários do sistema
+              Controle de acesso, setores e status
             </p>
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -136,87 +192,51 @@ const UserManagement: React.FC = () => {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>
-                  {editingUser ? 'Editar Usuário' : 'Criar Novo Usuário'}
-                </DialogTitle>
+                <DialogTitle>{editingUser ? 'Editar Usuário' : 'Novo Usuário'}</DialogTitle>
                 <DialogDescription>
-                  {editingUser
-                    ? 'Atualize as informações do usuário'
-                    : 'Preencha os dados do novo usuário'}
+                  Preencha os dados de acesso e alocação.
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Nome *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) =>
-                      setFormData({ ...formData, name: e.target.value })
-                    }
-                    placeholder="Nome completo"
-                    required
-                  />
+                  <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="email">Email *</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                    placeholder="email@energia.com"
-                    required
-                  />
+                  <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="role">Tipo de Usuário *</Label>
-                  <Select
-                    value={formData.role}
-                    onValueChange={(value: 'admin' | 'user') =>
-                      setFormData({ ...formData, role: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="admin">Administrador</SelectItem>
-                      <SelectItem value="user">Funcionário</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label htmlFor="password">{editingUser ? 'Nova Senha' : 'Senha *'}</Label>
+                  <div className="relative">
+                    <KeyRound className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                    <Input id="password" type="password" className="pl-9" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} required={!editingUser} />
+                  </div>
                 </div>
-                {formData.role === 'user' && (
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="sector">Setor *</Label>
-                    <Select
-                      value={formData.sectorId}
-                      onValueChange={(value) =>
-                        setFormData({ ...formData, sectorId: value })
-                      }
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione um setor" />
-                      </SelectTrigger>
+                    <Label htmlFor="role">Tipo *</Label>
+                    <Select value={formData.role} onValueChange={(v: any) => setFormData({ ...formData, role: v })}>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {mockSectors.map((sector) => (
-                          <SelectItem key={sector.id} value={sector.id}>
-                            {sector.name}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="admin">Administrador</SelectItem>
+                        <SelectItem value="user">Consultor</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                )}
+                  <div className="space-y-2">
+                    <Label htmlFor="sector">Setor *</Label>
+                    <Select value={formData.sectorId} onValueChange={(v) => setFormData({ ...formData, sectorId: v })}>
+                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectContent>
+                        {mockSectors.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>
-                    Cancelar
-                  </Button>
-                  <Button type="submit" variant="hero">
-                    {editingUser ? 'Salvar' : 'Criar'}
-                  </Button>
+                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                  <Button type="submit" variant="hero">Salvar</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -228,11 +248,9 @@ const UserManagement: React.FC = () => {
           <Card className="glass-card">
             <CardContent className="p-6">
               <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-primary/10">
-                  <UserCog className="w-6 h-6 text-primary" />
-                </div>
+                <div className="p-3 rounded-xl bg-primary/10"><UserCog className="w-6 h-6 text-primary" /></div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Total</p>
+                  <p className="text-sm text-muted-foreground">Total de Usuários</p>
                   <p className="text-3xl font-display font-bold">{users.length}</p>
                 </div>
               </div>
@@ -241,12 +259,10 @@ const UserManagement: React.FC = () => {
           <Card className="glass-card">
             <CardContent className="p-6">
               <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-secondary/10">
-                  <Shield className="w-6 h-6 text-secondary" />
-                </div>
+                <div className="p-3 rounded-xl bg-success/10"><Shield className="w-6 h-6 text-success" /></div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Admins</p>
-                  <p className="text-3xl font-display font-bold">{adminCount}</p>
+                  <p className="text-sm text-muted-foreground">Ativos</p>
+                  <p className="text-3xl font-display font-bold">{activeCount}</p>
                 </div>
               </div>
             </CardContent>
@@ -254,25 +270,56 @@ const UserManagement: React.FC = () => {
           <Card className="glass-card">
             <CardContent className="p-6">
               <div className="flex items-center gap-4">
-                <div className="p-3 rounded-xl bg-accent">
-                  <UserIcon className="w-6 h-6 text-accent-foreground" />
-                </div>
+                <div className="p-3 rounded-xl bg-destructive/10"><Ban className="w-6 h-6 text-destructive" /></div>
                 <div>
-                  <p className="text-sm text-muted-foreground">Funcionários</p>
-                  <p className="text-3xl font-display font-bold">{userCount}</p>
+                  <p className="text-sm text-muted-foreground">Inativos</p>
+                  <p className="text-3xl font-display font-bold">{inactiveCount}</p>
                 </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Table */}
         <Card className="glass-card">
           <CardHeader>
-            <CardTitle className="text-xl">Lista de Usuários</CardTitle>
-            <CardDescription>
-              Todos os usuários com acesso ao sistema
-            </CardDescription>
+            <div className="flex flex-col gap-4">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                <CardTitle className="text-xl">Lista de Usuários</CardTitle>
+                
+                {/* Filtros */}
+                <div className="flex flex-wrap gap-2">
+                  <Input 
+                    placeholder="Buscar..." 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)} 
+                    className="w-full sm:w-[150px]" 
+                  />
+                  <Select value={roleFilter} onValueChange={(v: any) => setRoleFilter(v)}>
+                    <SelectTrigger className="w-[110px]"><SelectValue placeholder="Tipo" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="admin">Admin</SelectItem>
+                      <SelectItem value="user">User</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
+                    <SelectTrigger className="w-[110px]"><SelectValue placeholder="Status" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="active">Ativos</SelectItem>
+                      <SelectItem value="inactive">Inativos</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Select value={sectorFilter} onValueChange={setSectorFilter}>
+                    <SelectTrigger className="w-[140px]"><SelectValue placeholder="Setor" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos Setores</SelectItem>
+                      {mockSectors.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
             <div className="overflow-x-auto">
@@ -280,38 +327,53 @@ const UserManagement: React.FC = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>Usuário</TableHead>
-                    <TableHead>Email</TableHead>
+                    <TableHead>Status</TableHead>
                     <TableHead>Tipo</TableHead>
                     <TableHead>Setor</TableHead>
-                    <TableHead>Ações</TableHead>
+                    <TableHead className="text-right">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {users.map((user) => (
-                    <TableRow key={user.id}>
-                      <TableCell className="font-medium">{user.name}</TableCell>
-                      <TableCell>{user.email}</TableCell>
+                  {filteredUsers.map((user) => (
+                    <TableRow key={user.id} className={cn(!user.active && "opacity-60 bg-muted/50")}>
                       <TableCell>
-                        {user.role === 'admin' ? (
-                          <Badge variant="secondary">Admin</Badge>
-                        ) : (
-                          <Badge variant="outline">Funcionário</Badge>
-                        )}
+                        <div className="flex flex-col">
+                          <span className="font-medium">{user.name}</span>
+                          <span className="text-xs text-muted-foreground">{user.email}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={user.active ? "success" : "secondary"} className={cn(!user.active && "bg-muted-foreground text-white")}>
+                          {user.active ? 'Ativo' : 'Inativo'}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{user.role === 'admin' ? 'Admin' : 'Consultor'}</Badge>
                       </TableCell>
                       <TableCell>{getSectorName(user.sectorId)}</TableCell>
-                      <TableCell>
-                        <div className="flex items-center gap-2">
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-1">
                           <Button
                             variant="ghost"
-                            size="sm"
+                            size="icon"
+                            onClick={() => handleToggleStatus(user)}
+                            title={user.active ? "Inativar Usuário" : "Ativar Usuário"}
+                            className={cn("h-8 w-8", user.active ? "text-destructive hover:text-destructive hover:bg-destructive/10" : "text-success hover:text-success hover:bg-success/10")}
+                          >
+                            <Power className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
                             onClick={() => handleOpenDialog(user)}
+                            className="h-8 w-8"
                           >
                             <Edit className="w-4 h-4" />
                           </Button>
                           <Button
                             variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
+                            size="icon"
+                            className="h-8 w-8 text-muted-foreground hover:text-destructive"
                             onClick={() => handleDelete(user.id)}
                           >
                             <Trash2 className="w-4 h-4" />
@@ -322,12 +384,6 @@ const UserManagement: React.FC = () => {
                   ))}
                 </TableBody>
               </Table>
-              {users.length === 0 && (
-                <div className="text-center py-12 text-muted-foreground">
-                  <UserCog className="w-12 h-12 mx-auto mb-4 opacity-50" />
-                  <p>Nenhum usuário cadastrado</p>
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>

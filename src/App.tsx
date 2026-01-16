@@ -23,6 +23,10 @@ const App = () => (
             <Route path="/dashboard/clients" element={<Dashboard />} />
             <Route path="/dashboard/sectors" element={<Dashboard />} />
             <Route path="/dashboard/users" element={<Dashboard />} />
+            {/* ADICIONE ESTA LINHA: */}
+            <Route path="/dashboard/reports" element={<Dashboard />} />
+            
+            <Route path="/dashboard/my-clients" element={<Dashboard />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>

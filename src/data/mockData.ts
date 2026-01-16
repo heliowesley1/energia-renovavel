@@ -7,10 +7,10 @@ export const mockSectors: Sector[] = [
 ];
 
 export const mockUsers: User[] = [
-  { id: '1', name: 'Admin Master', email: 'admin@energia.com', role: 'admin' },
-  { id: '2', name: 'João Silva', email: 'joao@energia.com', role: 'user', sectorId: '1' },
-  { id: '3', name: 'Maria Santos', email: 'maria@energia.com', role: 'user', sectorId: '2' },
-  { id: '4', name: 'Pedro Costa', email: 'pedro@energia.com', role: 'user', sectorId: '3' },
+  { id: '1', name: 'Admin Master', email: 'admin@energia.com', role: 'admin', active: true },
+  { id: '2', name: 'João Silva', email: 'joao@energia.com', role: 'user', sectorId: '1', active: true },
+  { id: '3', name: 'Maria Santos', email: 'maria@energia.com', role: 'user', sectorId: '2', active: true },
+  { id: '4', name: 'Pedro Costa', email: 'pedro@energia.com', role: 'user', sectorId: '3', active: false }, // Exemplo de inativo
 ];
 
 export const mockClients: Client[] = [
