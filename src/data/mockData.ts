@@ -1,4 +1,4 @@
-import { User, Sector, Client } from '@/types';
+import type { User, Sector, Client } from '@/types';
 
 export const mockSectors: Sector[] = [
   { id: '1', name: 'Região Norte', description: 'Clientes da região norte', createdAt: new Date('2024-01-01') },
