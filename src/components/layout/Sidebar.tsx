@@ -12,8 +12,7 @@ import {
   LogOut,
   Menu,
   X,
-  FileBarChart,
-  ClipboardList
+  PieChart // Adicionado ícone para diferenciar
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -32,16 +31,14 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
   };
 
   const adminLinks = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Visão Geral' },
+    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' }, // Renomeado
     { href: '/dashboard/clients', icon: Users, label: 'Clientes' },
-    { href: '/dashboard/reports', icon: FileBarChart, label: 'Relatórios' }, // <--- LINK
     { href: '/dashboard/sectors', icon: Building2, label: 'Setores' },
     { href: '/dashboard/users', icon: UserCog, label: 'Usuários' },
   ];
 
   const userLinks = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Resumo' },
-    { href: '/dashboard/my-clients', icon: ClipboardList, label: 'Meus Clientes' },
+    { href: '/dashboard', icon: LayoutDashboard, label: 'Meus Clientes' },
   ];
 
   const links = user?.role === 'admin' ? adminLinks : userLinks;
@@ -89,7 +86,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
               {user?.name}
             </p>
             <p className="text-xs text-sidebar-foreground/60 capitalize">
-              {user?.role === 'admin' ? 'Administrador' : 'Consultor'}
+              {user?.role === 'admin' ? 'Administrador' : 'Funcionário'}
             </p>
           </div>
 
