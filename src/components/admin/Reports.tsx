@@ -4,6 +4,10 @@
  * 1. Card de Filtros: Adicionado `w-full md:w-fit ml-auto` para não expandir totalmente.
  * 2. Alinhamento: Uso de `items-center` e `gap` consistentes para alinhar botões e inputs.
  * 3. Paginação: Ajuste de layout para garantir botões alinhados.
+ * * ATUALIZAÇÕES (USER REQUEST):
+ * 4. Ranking: Top 5 consultores.
+ * 5. Relatório: Ordenação por data (mais recente primeiro).
+ * 6. Card Setor: Ajuste de layout (Nome no header, contagem no body).
  */
 
 import React, { useState, useMemo, useEffect } from 'react';
@@ -99,7 +103,7 @@ const Reports: React.FC = () => {
 
   // --- LÓGICA DE FILTRAGEM ---
   const filteredData = useMemo(() => {
-    return mockClients.filter(client => {
+    const data = mockClients.filter(client => {
       const matchSector = selectedSector === 'all' || client.sectorId === selectedSector;
       const matchUser = selectedUser === 'all' || client.userId === selectedUser;
       const matchStatus = selectedStatus === 'all' || client.status === selectedStatus;
@@ -121,6 +125,9 @@ const Reports: React.FC = () => {
       
       return matchSector && matchUser && matchStatus && matchDate;
     });
+
+    // CORREÇÃO: Ordenar por data de criação (mais recente primeiro)
+    return data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [selectedSector, selectedUser, selectedStatus, date]);
 
   const availableConsultants = useMemo(() => {
@@ -142,6 +149,9 @@ const Reports: React.FC = () => {
     count: filteredData.filter(c => c.sectorId === sector.id).length
   })).filter(s => s.count > 0);
 
+  // Helper para Setor Mais Ativo
+  const topSector = clientsBySector.sort((a, b) => b.count - a.count)[0];
+
   // --- LÓGICA DO RANKING ---
   const consultantsRanking = useMemo(() => {
     const counts: Record<string, number> = {};
@@ -156,7 +166,7 @@ const Reports: React.FC = () => {
         return { name: user?.name || 'Desconhecido', count };
       })
       .sort((a, b) => b.count - a.count)
-      .slice(0, 3);
+      .slice(0, 5); // CORREÇÃO: Top 5
   }, [filteredData]);
 
   // --- PAGINAÇÃO ---
@@ -199,8 +209,7 @@ const Reports: React.FC = () => {
           </div>
         </div>
 
-        {/* --- CARD DE FILTROS (AJUSTADO) --- */}
-        {/* w-full md:w-fit ml-auto: Card cresce conforme conteúdo e flutua à direita */}
+        {/* --- CARD DE FILTROS --- */}
         <Card className="bg-muted/40 border-muted-foreground/20 shadow-sm w-full md:w-fit ml-auto transition-all duration-300">
           <CardContent className="p-4">
             <div className="flex flex-col xl:flex-row gap-4 items-end xl:items-center xl:justify-end">
@@ -209,7 +218,7 @@ const Reports: React.FC = () => {
                 <Filter className="w-4 h-4" /> Filtros:
               </div>
               
-              {/* Container de Inputs - Items alinhados ao centro */}
+              {/* Container de Inputs */}
               <div className="flex flex-wrap items-center justify-end gap-3 w-full xl:w-auto">
                 
                 <div className="w-full sm:w-[160px]">
@@ -311,13 +320,17 @@ const Reports: React.FC = () => {
             </CardContent>
           </Card>
           
+          {/* CORREÇÃO: Card Ajustado (Nome no Header) */}
           <Card>
-            <CardHeader>
+            <CardHeader className="pb-2">
               <CardTitle className="text-lg">Setor Ativo</CardTitle>
+              <CardDescription className="text-base font-semibold text-foreground truncate">
+                {topSector?.name || 'N/A'}
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold truncate">
-                {clientsBySector.sort((a, b) => b.count - a.count)[0]?.name || 'N/A'}
+              <div className="text-3xl font-bold">
+                {topSector?.count || 0}
               </div>
               <p className="text-xs text-muted-foreground">Maior volume (Filtro)</p>
             </CardContent>
@@ -338,7 +351,7 @@ const Reports: React.FC = () => {
           <Card className="border-l-4 border-l-emerald-500 flex flex-col">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
-                <Medal className="w-5 h-5 text-emerald-500" /> Ranking
+                <Medal className="w-5 h-5 text-emerald-500" /> Ranking Top 5
               </CardTitle>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col justify-center">
@@ -351,7 +364,8 @@ const Reports: React.FC = () => {
                           "w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold",
                           index === 0 ? "bg-yellow-100 text-yellow-700" :
                           index === 1 ? "bg-slate-100 text-slate-700" :
-                          "bg-orange-100 text-orange-700"
+                          index === 2 ? "bg-orange-100 text-orange-700" :
+                          "bg-muted text-muted-foreground"
                         )}>
                           {index + 1}º
                         </span>

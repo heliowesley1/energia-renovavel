@@ -1,7 +1,7 @@
 /**
  * ARQUIVO: src/components/layout/Sidebar.tsx
- * * ALTERAÇÕES:
- * 1. Adição do item { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios' } na lista `adminLinks`.
+ * * ATUALIZAÇÕES:
+ * 1. Renomeado item de menu do usuário: "Visão Geral" -> "Dashboard".
  */
 
 import React from 'react';
@@ -18,7 +18,8 @@ import {
   LogOut,
   Menu,
   X,
-  PieChart // Já estava importado, agora será usado
+  PieChart,
+  ClipboardList
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -38,14 +39,16 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
 
   const adminLinks = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios' }, // NOVO LINK
+    { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios' },
     { href: '/dashboard/clients', icon: Users, label: 'Clientes' },
     { href: '/dashboard/sectors', icon: Building2, label: 'Setores' },
     { href: '/dashboard/users', icon: UserCog, label: 'Usuários' },
   ];
 
+  // Links atualizados para o Funcionário
   const userLinks = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Meus Clientes' },
+    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' }, // Alterado de "Visão Geral"
+    { href: '/dashboard/my-clients', icon: ClipboardList, label: 'Meus Clientes' },
   ];
 
   const links = user?.role === 'admin' ? adminLinks : userLinks;
@@ -93,7 +96,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
               {user?.name}
             </p>
             <p className="text-xs text-sidebar-foreground/60 capitalize">
-              {user?.role === 'admin' ? 'Administrador' : 'Funcionário'}
+              {user?.role === 'admin' ? 'Administrador' : 'Consultor'}
             </p>
           </div>
 

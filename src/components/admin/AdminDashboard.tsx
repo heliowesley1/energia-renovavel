@@ -1,3 +1,11 @@
+/**
+ * ARQUIVO: src/components/admin/AdminDashboard.tsx
+ * * ATUALIZAÇÕES:
+ * 1. Removida mensagem de "Bem-vindo" do cabeçalho.
+ * 2. Adicionado Botão "Novo Cliente" e Modal de Cadastro.
+ * 3. Formulário de cadastro inclui seleção de Setor e Funcionário (Consultor).
+ */
+
 import React, { useState } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -23,6 +31,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter, // Adicionado
 } from '@/components/ui/dialog';
 import {
   Table,
@@ -34,7 +43,6 @@ import {
 } from '@/components/ui/table';
 import {
   Users,
-  Building2,
   UserCheck,
   UserX,
   Clock,
@@ -42,8 +50,6 @@ import {
   Search,
   Filter,
   Eye,
-  Download,
-  TrendingUp,
   Zap,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -57,6 +63,40 @@ const AdminDashboard: React.FC = () => {
   const [sectorFilter, setSectorFilter] = useState<string>('all');
   const [userFilter, setUserFilter] = useState<string>('all');
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+
+  // Estados para Adicionar Cliente
+  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
+  const [newClientData, setNewClientData] = useState({
+    name: '',
+    email: '',
+    cpf: '',
+    phone: '',
+    sectorId: '',
+    userId: '',
+    observations: '',
+  });
+
+  // Função para formatar CPF e Telefone (Igual ao UserDashboard)
+  const formatCPF = (value: string) => value.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})/, '$1-$2').replace(/(-\d{2})\d+?$/, '$1');
+  const formatPhone = (value: string) => value.replace(/\D/g, '').replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').replace(/(-\d{4})\d+?$/, '$1');
+
+  const handleAddClient = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    // Simulação de criação
+    const newClient: Client = {
+      id: String(Date.now()),
+      ...newClientData,
+      status: 'pending',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+
+    setClients((prev) => [newClient, ...prev]);
+    toast({ title: 'Cliente cadastrado com sucesso!' });
+    setIsAddDialogOpen(false);
+    setNewClientData({ name: '', email: '', cpf: '', phone: '', sectorId: '', userId: '', observations: '' });
+  };
 
   // Stats
   const totalClients = clients.length;
@@ -141,10 +181,115 @@ const AdminDashboard: React.FC = () => {
               Gerencie clientes, setores e usuários do sistema
             </p>
           </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Zap className="w-4 h-4 text-primary" />
-            Bem-vindo, {user?.name}
-          </div>
+          
+          {/* Botão Novo Cliente (Adicionado) */}
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="hero" className="shadow-lg h-10">
+                <Plus className="w-4 h-4 mr-2" />
+                Novo Cliente
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Cadastrar Novo Cliente</DialogTitle>
+                <DialogDescription>
+                  Preencha os dados abaixo. Como administrador, você pode vincular um setor e um funcionário.
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleAddClient} className="space-y-4 mt-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Nome *</Label>
+                    <Input 
+                      id="name" 
+                      value={newClientData.name} 
+                      onChange={(e) => setNewClientData({ ...newClientData, name: e.target.value })} 
+                      required 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cpf">CPF *</Label>
+                    <Input 
+                      id="cpf" 
+                      value={newClientData.cpf} 
+                      onChange={(e) => setNewClientData({ ...newClientData, cpf: formatCPF(e.target.value) })} 
+                      required 
+                      maxLength={14}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input 
+                      id="email" 
+                      type="email"
+                      value={newClientData.email} 
+                      onChange={(e) => setNewClientData({ ...newClientData, email: e.target.value })} 
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Telefone</Label>
+                    <Input 
+                      id="phone" 
+                      value={newClientData.phone} 
+                      onChange={(e) => setNewClientData({ ...newClientData, phone: formatPhone(e.target.value) })} 
+                      maxLength={15}
+                    />
+                  </div>
+                </div>
+
+                {/* Seleção de Setor e Consultor (Exclusivo Admin) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="sector">Setor *</Label>
+                    <Select 
+                      required 
+                      onValueChange={(val) => setNewClientData({ ...newClientData, sectorId: val })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mockSectors.map((sector) => (
+                          <SelectItem key={sector.id} value={sector.id}>{sector.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="user">Consultor *</Label>
+                    <Select 
+                      required
+                      onValueChange={(val) => setNewClientData({ ...newClientData, userId: val })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Selecione..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {mockUsers.filter(u => u.role === 'user').map((user) => (
+                          <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="obs">Observações</Label>
+                  <Textarea 
+                    id="obs"
+                    value={newClientData.observations}
+                    onChange={(e) => setNewClientData({ ...newClientData, observations: e.target.value })}
+                  />
+                </div>
+
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancelar</Button>
+                  <Button type="submit" variant="hero">Cadastrar</Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
         </div>
 
         {/* Stats */}

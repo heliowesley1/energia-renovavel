@@ -1,19 +1,24 @@
 /**
  * ARQUIVO: src/pages/Dashboard.tsx
- * * ALTERAÇÕES:
- * 1. Importação do componente `Reports`.
- * 2. Adição da condicional para renderizar `<Reports />` quando a rota for `/dashboard/reports`.
+ * * ATUALIZAÇÕES:
+ * 1. Adicionado import de UserOverview.
+ * 2. Adicionado lógica de rotas para usuários comuns (Overview vs MyClients).
  */
 
 import React from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useLocation, Navigate } from 'react-router-dom';
-import AdminDashboard from '@/components/admin/AdminDashboard'; // Funciona como Lista de Clientes
-import AdminOverview from '@/components/admin/AdminOverview'; // Novo Dashboard
+
+// Admin Components
+import AdminDashboard from '@/components/admin/AdminDashboard'; 
+import AdminOverview from '@/components/admin/AdminOverview'; 
 import SectorManagement from '@/components/admin/SectorManagement';
 import UserManagement from '@/components/admin/UserManagement';
-import Reports from '@/components/admin/Reports'; // IMPORTADO
-import UserDashboard from '@/components/user/UserDashboard';
+import Reports from '@/components/admin/Reports';
+
+// User Components
+import UserDashboard from '@/components/user/UserDashboard'; // Lista/Cadastro
+import UserOverview from '@/components/user/UserOverview';   // Dashboard Visual (NOVO)
 
 const Dashboard: React.FC = () => {
   const { user, isAuthenticated } = useAuth();
@@ -23,31 +28,30 @@ const Dashboard: React.FC = () => {
     return <Navigate to="/" replace />;
   }
 
-  // Rotas de Admin
+  // --- Rotas de ADMIN ---
   if (user.role === 'admin') {
-    // Rota Principal -> Novo Dashboard Visual
-    if (location.pathname === '/dashboard') {
-      return <AdminOverview />;
-    }
-    // Rota Clientes -> Antigo AdminDashboard (Lista)
-    if (location.pathname === '/dashboard/clients') {
-      return <AdminDashboard />;
-    }
-    if (location.pathname === '/dashboard/sectors') {
-      return <SectorManagement />;
-    }
-    if (location.pathname === '/dashboard/users') {
-      return <UserManagement />;
-    }
-    // NOVA ROTA
-    if (location.pathname === '/dashboard/reports') {
-      return <Reports />;
-    }
+    if (location.pathname === '/dashboard') return <AdminOverview />;
+    if (location.pathname === '/dashboard/clients') return <AdminDashboard />;
+    if (location.pathname === '/dashboard/sectors') return <SectorManagement />;
+    if (location.pathname === '/dashboard/users') return <UserManagement />;
+    if (location.pathname === '/dashboard/reports') return <Reports />;
+    
     return <AdminOverview />;
   }
 
-  // Rotas de Usuário Comum
-  return <UserDashboard />;
+  // --- Rotas de USUÁRIO (Consultor) ---
+  // Rota Principal: Mostra os gráficos
+  if (location.pathname === '/dashboard') {
+    return <UserOverview />;
+  }
+  
+  // Rota de Gestão: Mostra a tabela e cadastro
+  if (location.pathname === '/dashboard/my-clients') {
+    return <UserDashboard />;
+  }
+
+  // Fallback padrão
+  return <UserOverview />;
 };
 
 export default Dashboard;

@@ -1,12 +1,12 @@
 /**
  * ARQUIVO: src/components/admin/AdminOverview.tsx
- * * ALTERAÇÕES:
- * 1. Card de Filtros: Adicionado `w-full md:w-fit ml-auto` para o card crescer conforme o conteúdo e alinhar à direita.
- * 2. Inputs de Data: Envolvidos em `div relative` com `CalendarIcon` absoluto à esquerda.
- * 3. Input Styling: Adicionado `pl-8` para dar espaço ao ícone e ocultado o indicador nativo do navegador para um visual mais limpo (opcional, mantive nativo funcional mas com ícone visual extra).
+ * * ATUALIZAÇÕES:
+ * 1. Adicionada mensagem de "Bem-vindo" no cabeçalho (movida da tela de clientes).
+ * 2. Importado useAuth para pegar o nome do usuário.
  */
 
 import React, { useState, useMemo } from 'react';
+import { useAuth } from '@/contexts/AuthContext'; // Importado
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { mockClients, mockUsers, mockSectors } from '@/data/mockData';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -16,7 +16,6 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
 import { type DateRange } from 'react-day-picker';
 import { 
   Users, 
@@ -30,20 +29,19 @@ import {
   PieChart,
   BarChart3,
   UserCheck,
-  Calendar as CalendarIcon // Ícone importado
+  Calendar as CalendarIcon,
+  Zap // Ícone para o bem-vindo
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const AdminOverview: React.FC = () => {
+  const { user } = useAuth(); // Hook de autenticação
+
   // Estados dos Filtros
   const [selectedSector, setSelectedSector] = useState<string>('all');
   const [selectedUser, setSelectedUser] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  
-  // Estado do Preset de Período
   const [periodPreset, setPeriodPreset] = useState<string>('all');
-  
-  // Estado da Data
   const [date, setDate] = useState<DateRange | undefined>();
 
   const handlePeriodPresetChange = (value: string) => {
@@ -137,46 +135,48 @@ const AdminOverview: React.FC = () => {
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in">
         
-        {/* Cabeçalho */}
-        <div className="flex flex-col gap-4">
+        {/* Cabeçalho com Bem-vindo */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">Dashboard</h1>
             <p className="text-muted-foreground mt-1">
               Análise de performance com filtros avançados.
             </p>
           </div>
+          
+          {/* Mensagem de Bem-Vindo (Movida para cá) */}
+          <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/40 px-4 py-2 rounded-full border border-border/50 shadow-sm">
+            <Zap className="w-4 h-4 text-amber-500 fill-amber-500/20" />
+            <span>Bem-vindo, <strong className="text-foreground font-semibold">{user?.name}</strong></span>
+          </div>
+        </div>
 
-          {/* Barra de Filtros */}
-          {/* w-full md:w-fit ml-auto: Faz o card ocupar apenas o espaço necessário e alinhar à direita */}
-          <Card className="bg-muted/40 border-muted-foreground/20 shadow-sm w-full md:w-fit ml-auto transition-all duration-300">
-            <CardContent className="p-4">
-              <div className="flex flex-col xl:flex-row gap-4 items-end xl:items-center xl:justify-end">
-                
-                {/* Label Filtros */}
-                <div className="flex items-center gap-2 text-sm font-bold text-foreground min-w-[60px] pb-2 xl:pb-0">
-                  <Filter className="w-4 h-4" /> Filtros:
+        {/* Barra de Filtros */}
+        <Card className="bg-muted/40 border-muted-foreground/20 shadow-sm w-full md:w-fit ml-auto transition-all duration-300">
+          <CardContent className="p-4">
+            <div className="flex flex-col xl:flex-row gap-4 items-end xl:items-center xl:justify-end">
+              
+              <div className="flex items-center gap-2 text-sm font-bold text-foreground min-w-[60px] pb-2 xl:pb-0">
+                <Filter className="w-4 h-4" /> Filtros:
+              </div>
+              
+              <div className="flex flex-wrap items-center justify-end gap-3 w-full xl:w-auto">
+                <div className="w-full sm:w-[150px]">
+                  <Select value={selectedSector} onValueChange={(v) => { setSelectedSector(v); setSelectedUser('all'); }}>
+                    <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
+                      <SelectValue placeholder="Setor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos Setores</SelectItem>
+                      {mockSectors.map((s) => (
+                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
-                
-                {/* Container Flex dos Filtros */}
-                <div className="flex flex-wrap items-center justify-end gap-3 w-full xl:w-auto">
-                  
-                  {/* Filtro Setor */}
-                  <div className="w-full sm:w-[150px]">
-                    <Select value={selectedSector} onValueChange={(v) => { setSelectedSector(v); setSelectedUser('all'); }}>
-                      <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
-                        <SelectValue placeholder="Setor" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos Setores</SelectItem>
-                        {mockSectors.map((s) => (
-                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
 
-                  {/* Filtro Consultor */}
-                  <div className="w-full sm:w-[150px]">
+                {selectedSector !== 'all' && (
+                  <div className="w-full sm:w-[150px] animate-in fade-in slide-in-from-left-2 duration-300">
                     <Select value={selectedUser} onValueChange={setSelectedUser}>
                       <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
                         <SelectValue placeholder="Consultor" />
@@ -189,87 +189,78 @@ const AdminOverview: React.FC = () => {
                       </SelectContent>
                     </Select>
                   </div>
+                )}
 
-                  {/* Filtro Status */}
-                  <div className="w-full sm:w-[150px]">
-                    <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                      <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
-                        <SelectValue placeholder="Status" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos Status</SelectItem>
-                        <SelectItem value="approved">Aprovados</SelectItem>
-                        <SelectItem value="pending">Pendentes</SelectItem>
-                        <SelectItem value="rejected">Reprovados</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Filtro Período (PRESET) */}
-                  <div className="w-full sm:w-[150px]">
-                    <Select value={periodPreset} onValueChange={handlePeriodPresetChange}>
-                      <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
-                        <SelectValue placeholder="Período" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todo o período</SelectItem>
-                        <SelectItem value="today">Hoje</SelectItem>
-                        <SelectItem value="7days">Últimos 7 dias</SelectItem>
-                        <SelectItem value="month">Este Mês</SelectItem>
-                        <SelectItem value="custom">Personalizado...</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-
-                  {/* Inputs de Data Personalizada com Ícones */}
-                  {periodPreset === 'custom' && (
-                    <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2 w-full sm:w-auto">
-                      
-                      {/* Data Inicial */}
-                      <div className="relative w-full sm:w-[140px]">
-                        <CalendarIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" />
-                        <Input 
-                          type="date" 
-                          className="h-9 text-xs bg-background pl-9 w-full" 
-                          value={date?.from ? format(date.from, 'yyyy-MM-dd') : ''}
-                          onChange={handleFromDateChange}
-                        />
-                      </div>
-                      
-                      <span className="text-muted-foreground text-xs font-medium">até</span>
-                      
-                      {/* Data Final */}
-                      <div className="relative w-full sm:w-[140px]">
-                        <CalendarIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" />
-                        <Input 
-                          type="date" 
-                          className="h-9 text-xs bg-background pl-9 w-full" 
-                          value={date?.to ? format(date.to, 'yyyy-MM-dd') : ''}
-                          onChange={handleToDateChange}
-                        />
-                      </div>
-                    </div>
-                  )}
-
-                  {/* Botão Limpar */}
-                  {(selectedSector !== 'all' || selectedUser !== 'all' || selectedStatus !== 'all' || periodPreset !== 'all') && (
-                    <Button 
-                      variant="ghost" 
-                      size="icon" 
-                      onClick={clearFilters}
-                      className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-9 w-9"
-                      title="Limpar Filtros"
-                    >
-                      <Eraser className="w-5 h-5" />
-                    </Button>
-                  )}
+                <div className="w-full sm:w-[150px]">
+                  <Select value={selectedStatus} onValueChange={setSelectedStatus}>
+                    <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos Status</SelectItem>
+                      <SelectItem value="approved">Aprovados</SelectItem>
+                      <SelectItem value="pending">Pendentes</SelectItem>
+                      <SelectItem value="rejected">Reprovados</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
 
-        {/* Cards de Métricas (Linha 1) */}
+                <div className="w-full sm:w-[150px]">
+                  <Select value={periodPreset} onValueChange={handlePeriodPresetChange}>
+                    <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
+                      <SelectValue placeholder="Período" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todo o período</SelectItem>
+                      <SelectItem value="today">Hoje</SelectItem>
+                      <SelectItem value="7days">Últimos 7 dias</SelectItem>
+                      <SelectItem value="month">Este Mês</SelectItem>
+                      <SelectItem value="custom">Personalizado...</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {periodPreset === 'custom' && (
+                  <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2 w-full sm:w-auto">
+                    <div className="relative w-full sm:w-[140px]">
+                      <CalendarIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" />
+                      <Input 
+                        type="date" 
+                        className="h-9 text-xs bg-background pl-9 w-full" 
+                        value={date?.from ? format(date.from, 'yyyy-MM-dd') : ''}
+                        onChange={handleFromDateChange}
+                      />
+                    </div>
+                    <span className="text-muted-foreground text-xs font-medium">até</span>
+                    <div className="relative w-full sm:w-[140px]">
+                      <CalendarIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" />
+                      <Input 
+                        type="date" 
+                        className="h-9 text-xs bg-background pl-9 w-full" 
+                        value={date?.to ? format(date.to, 'yyyy-MM-dd') : ''}
+                        onChange={handleToDateChange}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {(selectedSector !== 'all' || selectedUser !== 'all' || selectedStatus !== 'all' || periodPreset !== 'all') && (
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    onClick={clearFilters}
+                    className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-9 w-9"
+                    title="Limpar Filtros"
+                  >
+                    <Eraser className="w-5 h-5" />
+                  </Button>
+                )}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* --- CARDS DE MÉTRICAS (MANTIDOS) --- */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="shadow-sm border-l-4 border-l-blue-600">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -331,7 +322,7 @@ const AdminOverview: React.FC = () => {
           </Card>
         </div>
 
-        {/* Cards de Métricas (Linha 2) */}
+        {/* --- MÉTRICAS SECUNDÁRIAS E LISTAS (MANTIDOS) --- */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
            <Card className="shadow-sm border-l-4 border-l-slate-500">
              <CardHeader className="pb-2">
@@ -386,7 +377,6 @@ const AdminOverview: React.FC = () => {
            </Card>
         </div>
 
-        {/* Lista de Resultados Filtrados */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-2 flex flex-col h-full">
             <CardHeader>
