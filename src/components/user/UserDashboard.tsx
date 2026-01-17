@@ -1,4 +1,12 @@
-import React, { useState } from 'react';
+/**
+ * ARQUIVO: src/components/user/UserDashboard.tsx
+ * * ALTERAÇÕES:
+ * 1. Email e Telefone não são mais obrigatórios (removido 'required').
+ * 2. Adicionado input do tipo file (oculto) e botão para anexar imagem.
+ * 3. Lógica para converter imagem em Base64 e exibir preview.
+ */
+
+import React, { useState, useRef } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { mockClients, mockSectors } from '@/data/mockData';
@@ -38,6 +46,8 @@ import {
   Plus,
   Edit,
   Upload,
+  Image as ImageIcon,
+  X
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
@@ -55,9 +65,12 @@ const UserDashboard: React.FC = () => {
     cpf: '',
     phone: '',
     observations: '',
-    status: 'pending' as 'pending' | 'approved' | 'rejected', // Default value, but managed by logic
+    status: 'pending' as 'pending' | 'approved' | 'rejected',
   });
   const [imagePreview, setImagePreview] = useState<string | null>(null);
+  
+  // Ref para o input de arquivo oculto
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const resetForm = () => {
     setFormData({
@@ -70,6 +83,7 @@ const UserDashboard: React.FC = () => {
     });
     setImagePreview(null);
     setEditingClient(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleOpenDialog = (client?: Client) => {
@@ -90,18 +104,34 @@ const UserDashboard: React.FC = () => {
     setIsDialogOpen(true);
   };
 
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreview(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removeImage = () => {
+    setImagePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
     if (editingClient) {
-      // Edição: Permite alterar status
+      // Edição
       setClients((prev) =>
         prev.map((c) =>
           c.id === editingClient.id
             ? {
                 ...c,
                 ...formData,
-                imageUrl: imagePreview || c.imageUrl,
+                imageUrl: imagePreview || undefined, // Atualiza a imagem
                 updatedAt: new Date(),
               }
             : c
@@ -109,12 +139,12 @@ const UserDashboard: React.FC = () => {
       );
       toast({ title: 'Cliente atualizado!' });
     } else {
-      // Criação: Força status 'pending'
+      // Criação
       const newClient: Client = {
         id: String(Date.now()),
         ...formData,
-        status: 'pending', // FORÇA PENDENTE NO CADASTRO
-        imageUrl: imagePreview || undefined,
+        status: 'pending',
+        imageUrl: imagePreview || undefined, // Salva a imagem
         sectorId: user?.sectorId || '1',
         userId: user?.id || '2',
         createdAt: new Date(),
@@ -161,26 +191,108 @@ const UserDashboard: React.FC = () => {
                   {editingClient ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}
                 </DialogTitle>
                 <DialogDescription>
-                  {editingClient ? 'Atualize as informações.' : 'Preencha os dados. O status será definido como Pendente.'}
+                  Preencha os dados abaixo. Nome e CPF são obrigatórios.
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Nome *</Label>
-                    <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email *</Label>
-                    <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required />
+                    <Input 
+                      id="name" 
+                      value={formData.name} 
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })} 
+                      required 
+                      placeholder="Nome completo"
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="cpf">CPF *</Label>
-                    <Input id="cpf" value={formData.cpf} onChange={(e) => setFormData({ ...formData, cpf: e.target.value })} required />
+                    <Input 
+                      id="cpf" 
+                      value={formData.cpf} 
+                      onChange={(e) => setFormData({ ...formData, cpf: e.target.value })} 
+                      required 
+                      placeholder="000.000.000-00"
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="phone">Telefone *</Label>
-                    <Input id="phone" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} required />
+                    <Label htmlFor="email">Email</Label>
+                    <Input 
+                      id="email" 
+                      type="email" 
+                      value={formData.email} 
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
+                      placeholder="email@exemplo.com"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Telefone</Label>
+                    <Input 
+                      id="phone" 
+                      value={formData.phone} 
+                      onChange={(e) => setFormData({ ...formData, phone: e.target.value })} 
+                      placeholder="(00) 00000-0000"
+                    />
+                  </div>
+                </div>
+
+                {/* Seção de Upload de Imagem */}
+                <div className="space-y-2">
+                  <Label>Anexo</Label>
+                  <div className="border border-dashed rounded-lg p-4 bg-muted/20 hover:bg-muted/40 transition-colors">
+                    <div className="flex flex-col items-center gap-3">
+                      
+                      {!imagePreview ? (
+                        <>
+                          <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={() => fileInputRef.current?.click()}
+                            className="w-full"
+                          >
+                            <Upload className="w-4 h-4 mr-2" />
+                            Anexar Imagem
+                          </Button>
+                          <p className="text-xs text-muted-foreground text-center">
+                            Formatos suportados: JPG, PNG (Opcional)
+                          </p>
+                        </>
+                      ) : (
+                        <div className="relative group w-full">
+                          <div className="relative w-full h-40 rounded-lg overflow-hidden border bg-background">
+                            <img 
+                              src={imagePreview} 
+                              alt="Preview" 
+                              className="w-full h-full object-contain" 
+                            />
+                          </div>
+                          <div className="flex items-center justify-between mt-2">
+                            <span className="text-xs text-emerald-600 font-medium flex items-center">
+                              <ImageIcon className="w-3 h-3 mr-1" /> Imagem anexada
+                            </span>
+                            <Button 
+                              type="button" 
+                              variant="destructive" 
+                              size="sm" 
+                              className="h-7 text-xs"
+                              onClick={removeImage}
+                            >
+                              <X className="w-3 h-3 mr-1" /> Remover
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {/* Input Oculto */}
+                      <input 
+                        type="file" 
+                        ref={fileInputRef} 
+                        className="hidden" 
+                        accept="image/*"
+                        onChange={handleImageUpload}
+                      />
+                    </div>
                   </div>
                 </div>
 
@@ -210,7 +322,12 @@ const UserDashboard: React.FC = () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="observations">Observações</Label>
-                  <Textarea id="observations" value={formData.observations} onChange={(e) => setFormData({ ...formData, observations: e.target.value })} />
+                  <Textarea 
+                    id="observations" 
+                    value={formData.observations} 
+                    onChange={(e) => setFormData({ ...formData, observations: e.target.value })} 
+                    placeholder="Informações adicionais..."
+                  />
                 </div>
 
                 <DialogFooter>
@@ -233,6 +350,7 @@ const UserDashboard: React.FC = () => {
                   <TableRow>
                     <TableHead>Cliente</TableHead>
                     <TableHead>CPF</TableHead>
+                    <TableHead>Anexo</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Ações</TableHead>
                   </TableRow>
@@ -243,10 +361,19 @@ const UserDashboard: React.FC = () => {
                       <TableCell>
                         <div>
                           <p className="font-medium">{client.name}</p>
-                          <p className="text-sm text-muted-foreground">{client.email}</p>
+                          <p className="text-sm text-muted-foreground">{client.email || '-'}</p>
                         </div>
                       </TableCell>
                       <TableCell className="font-mono text-sm">{client.cpf}</TableCell>
+                      <TableCell>
+                        {client.imageUrl ? (
+                          <Badge variant="outline" className="text-xs bg-blue-50 text-blue-700 border-blue-200">
+                            <ImageIcon className="w-3 h-3 mr-1" /> Sim
+                          </Badge>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">-</span>
+                        )}
+                      </TableCell>
                       <TableCell>{getStatusBadge(client.status)}</TableCell>
                       <TableCell>
                         <Button variant="ghost" size="sm" onClick={() => handleOpenDialog(client)}>

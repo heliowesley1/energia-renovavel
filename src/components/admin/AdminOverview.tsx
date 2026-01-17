@@ -1,3 +1,11 @@
+/**
+ * ARQUIVO: src/components/admin/AdminOverview.tsx
+ * * ALTERAÇÕES:
+ * 1. Card de Filtros: Adicionado `w-full md:w-fit ml-auto` para o card crescer conforme o conteúdo e alinhar à direita.
+ * 2. Inputs de Data: Envolvidos em `div relative` com `CalendarIcon` absoluto à esquerda.
+ * 3. Input Styling: Adicionado `pl-8` para dar espaço ao ícone e ocultado o indicador nativo do navegador para um visual mais limpo (opcional, mantive nativo funcional mas com ícone visual extra).
+ */
+
 import React, { useState, useMemo } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { mockClients, mockUsers, mockSectors } from '@/data/mockData';
@@ -5,8 +13,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { type DateRange } from 'react-day-picker';
 import { 
   Users, 
   Filter,
@@ -15,55 +26,110 @@ import {
   CheckCircle2, 
   Clock,
   AlertCircle,
-  X,
+  Eraser,
   PieChart,
   BarChart3,
   UserCheck,
-  Activity
+  Calendar as CalendarIcon // Ícone importado
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 const AdminOverview: React.FC = () => {
   // Estados dos Filtros
   const [selectedSector, setSelectedSector] = useState<string>('all');
   const [selectedUser, setSelectedUser] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  
+  // Estado do Preset de Período
+  const [periodPreset, setPeriodPreset] = useState<string>('all');
+  
+  // Estado da Data
+  const [date, setDate] = useState<DateRange | undefined>();
 
-  // Limpar filtros
+  const handlePeriodPresetChange = (value: string) => {
+    setPeriodPreset(value);
+    const today = new Date();
+
+    switch (value) {
+      case 'today':
+        setDate({ from: today, to: today });
+        break;
+      case '7days':
+        setDate({ from: subDays(today, 7), to: today });
+        break;
+      case 'month':
+        setDate({ from: startOfMonth(today), to: endOfMonth(today) });
+        break;
+      case 'all':
+        setDate(undefined);
+        break;
+      case 'custom':
+        if (!date) setDate({ from: undefined, to: undefined }); 
+        break;
+    }
+  };
+
+  const handleFromDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVal = e.target.value;
+    const newDate = newVal ? new Date(newVal + 'T00:00:00') : undefined;
+    setDate(prev => ({ ...prev, from: newDate }));
+  };
+
+  const handleToDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVal = e.target.value;
+    const newDate = newVal ? new Date(newVal + 'T23:59:59') : undefined;
+    setDate(prev => ({ ...prev, to: newDate }));
+  };
+
   const clearFilters = () => {
     setSelectedSector('all');
     setSelectedUser('all');
     setSelectedStatus('all');
+    setPeriodPreset('all');
+    setDate(undefined);
   };
 
-  // --- Lógica de Filtragem Unificada ---
+  // --- Lógica de Filtragem ---
   const filteredData = useMemo(() => {
     return mockClients.filter(client => {
       const matchSector = selectedSector === 'all' || client.sectorId === selectedSector;
       const matchUser = selectedUser === 'all' || client.userId === selectedUser;
       const matchStatus = selectedStatus === 'all' || client.status === selectedStatus;
       
-      return matchSector && matchUser && matchStatus;
+      let matchDate = true;
+      if (date?.from) {
+        const clientDate = new Date(client.createdAt);
+        const fromDate = new Date(date.from);
+        fromDate.setHours(0, 0, 0, 0);
+        
+        if (date.to) {
+          const toDate = new Date(date.to);
+          toDate.setHours(23, 59, 59, 999);
+          matchDate = clientDate >= fromDate && clientDate <= toDate;
+        } else {
+          matchDate = clientDate >= fromDate;
+        }
+      }
+      
+      return matchSector && matchUser && matchStatus && matchDate;
     });
-  }, [selectedSector, selectedUser, selectedStatus]);
+  }, [selectedSector, selectedUser, selectedStatus, date]);
 
-  // Consultores disponíveis para o filtro
   const availableConsultants = useMemo(() => {
     if (selectedSector === 'all') return mockUsers.filter(u => u.role === 'user');
     return mockUsers.filter(u => u.role === 'user' && u.sectorId === selectedSector);
   }, [selectedSector]);
 
-  // --- Métricas Reais ---
+  // Métricas
   const total = filteredData.length;
   const approved = filteredData.filter(c => c.status === 'approved').length;
   const pending = filteredData.filter(c => c.status === 'pending').length;
   const rejected = filteredData.filter(c => c.status === 'rejected').length;
 
-  // Porcentagens
   const approvedPerc = total > 0 ? (approved / total) * 100 : 0;
   const pendingPerc = total > 0 ? (pending / total) * 100 : 0;
   const rejectedPerc = total > 0 ? (rejected / total) * 100 : 0;
-
-  // Consultores Ativos
+  
   const activeConsultantIds = Array.from(new Set(filteredData.map(c => c.userId)));
   const activeConsultantsCount = activeConsultantIds.length;
 
@@ -80,24 +146,28 @@ const AdminOverview: React.FC = () => {
             </p>
           </div>
 
-          {/* Barra de Filtros com Destaque Sutil (Cinza) */}
-          <Card className="bg-muted/40 border-muted-foreground/20 shadow-sm">
+          {/* Barra de Filtros */}
+          {/* w-full md:w-fit ml-auto: Faz o card ocupar apenas o espaço necessário e alinhar à direita */}
+          <Card className="bg-muted/40 border-muted-foreground/20 shadow-sm w-full md:w-fit ml-auto transition-all duration-300">
             <CardContent className="p-4">
-              <div className="flex flex-col md:flex-row gap-4 items-end md:items-center">
-                <div className="flex items-center gap-2 text-sm font-bold text-foreground min-w-[60px]">
+              <div className="flex flex-col xl:flex-row gap-4 items-end xl:items-center xl:justify-end">
+                
+                {/* Label Filtros */}
+                <div className="flex items-center gap-2 text-sm font-bold text-foreground min-w-[60px] pb-2 xl:pb-0">
                   <Filter className="w-4 h-4" /> Filtros:
                 </div>
                 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 w-full">
+                {/* Container Flex dos Filtros */}
+                <div className="flex flex-wrap items-center justify-end gap-3 w-full xl:w-auto">
+                  
                   {/* Filtro Setor */}
-                  <div className="space-y-1">
-                    <span className="text-xs font-semibold text-foreground ml-1 uppercase tracking-wide">Setor</span>
+                  <div className="w-full sm:w-[150px]">
                     <Select value={selectedSector} onValueChange={(v) => { setSelectedSector(v); setSelectedUser('all'); }}>
-                      <SelectTrigger className="bg-background border-input focus:ring-ring">
-                        <SelectValue placeholder="Todos os Setores" />
+                      <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
+                        <SelectValue placeholder="Setor" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Todos os Setores</SelectItem>
+                        <SelectItem value="all">Todos Setores</SelectItem>
                         {mockSectors.map((s) => (
                           <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                         ))}
@@ -106,14 +176,13 @@ const AdminOverview: React.FC = () => {
                   </div>
 
                   {/* Filtro Consultor */}
-                  <div className="space-y-1">
-                    <span className="text-xs font-semibold text-foreground ml-1 uppercase tracking-wide">Consultor</span>
+                  <div className="w-full sm:w-[150px]">
                     <Select value={selectedUser} onValueChange={setSelectedUser}>
-                      <SelectTrigger className="bg-background border-input focus:ring-ring">
-                        <SelectValue placeholder="Todos os Consultores" />
+                      <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
+                        <SelectValue placeholder="Consultor" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Todos os Consultores</SelectItem>
+                        <SelectItem value="all">Todos Consultores</SelectItem>
                         {availableConsultants.map((u) => (
                           <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
                         ))}
@@ -122,43 +191,86 @@ const AdminOverview: React.FC = () => {
                   </div>
 
                   {/* Filtro Status */}
-                  <div className="space-y-1">
-                    <span className="text-xs font-semibold text-foreground ml-1 uppercase tracking-wide">Status</span>
+                  <div className="w-full sm:w-[150px]">
                     <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                      <SelectTrigger className="bg-background border-input focus:ring-ring">
-                        <SelectValue placeholder="Todos os Status" />
+                      <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
+                        <SelectValue placeholder="Status" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Todos os Status</SelectItem>
+                        <SelectItem value="all">Todos Status</SelectItem>
                         <SelectItem value="approved">Aprovados</SelectItem>
                         <SelectItem value="pending">Pendentes</SelectItem>
                         <SelectItem value="rejected">Reprovados</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
 
-                {/* Botão Limpar */}
-                {(selectedSector !== 'all' || selectedUser !== 'all' || selectedStatus !== 'all') && (
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={clearFilters}
-                    className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                    title="Limpar Filtros"
-                  >
-                    <X className="w-5 h-5" />
-                  </Button>
-                )}
+                  {/* Filtro Período (PRESET) */}
+                  <div className="w-full sm:w-[150px]">
+                    <Select value={periodPreset} onValueChange={handlePeriodPresetChange}>
+                      <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
+                        <SelectValue placeholder="Período" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todo o período</SelectItem>
+                        <SelectItem value="today">Hoje</SelectItem>
+                        <SelectItem value="7days">Últimos 7 dias</SelectItem>
+                        <SelectItem value="month">Este Mês</SelectItem>
+                        <SelectItem value="custom">Personalizado...</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Inputs de Data Personalizada com Ícones */}
+                  {periodPreset === 'custom' && (
+                    <div className="flex items-center gap-2 animate-in fade-in slide-in-from-right-2 w-full sm:w-auto">
+                      
+                      {/* Data Inicial */}
+                      <div className="relative w-full sm:w-[140px]">
+                        <CalendarIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" />
+                        <Input 
+                          type="date" 
+                          className="h-9 text-xs bg-background pl-9 w-full" 
+                          value={date?.from ? format(date.from, 'yyyy-MM-dd') : ''}
+                          onChange={handleFromDateChange}
+                        />
+                      </div>
+                      
+                      <span className="text-muted-foreground text-xs font-medium">até</span>
+                      
+                      {/* Data Final */}
+                      <div className="relative w-full sm:w-[140px]">
+                        <CalendarIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" />
+                        <Input 
+                          type="date" 
+                          className="h-9 text-xs bg-background pl-9 w-full" 
+                          value={date?.to ? format(date.to, 'yyyy-MM-dd') : ''}
+                          onChange={handleToDateChange}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Botão Limpar */}
+                  {(selectedSector !== 'all' || selectedUser !== 'all' || selectedStatus !== 'all' || periodPreset !== 'all') && (
+                    <Button 
+                      variant="ghost" 
+                      size="icon" 
+                      onClick={clearFilters}
+                      className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-9 w-9"
+                      title="Limpar Filtros"
+                    >
+                      <Eraser className="w-5 h-5" />
+                    </Button>
+                  )}
+                </div>
               </div>
             </CardContent>
           </Card>
         </div>
 
-        {/* Cards de Métricas (Linha 1) - Totais e Status */}
+        {/* Cards de Métricas (Linha 1) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          
-          {/* Card Total: Azul */}
           <Card className="shadow-sm border-l-4 border-l-blue-600">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Selecionado</CardTitle>
@@ -170,7 +282,6 @@ const AdminOverview: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Card Aprovados: Verde */}
           <Card className="shadow-sm border-l-4 border-l-emerald-500">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Aprovados</CardTitle>
@@ -187,7 +298,6 @@ const AdminOverview: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Card Pendentes: Laranja */}
           <Card className="shadow-sm border-l-4 border-l-orange-500">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Pendentes</CardTitle>
@@ -204,7 +314,6 @@ const AdminOverview: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Card Reprovados: Vermelho */}
           <Card className="shadow-sm border-l-4 border-l-red-600">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Reprovados</CardTitle>
@@ -222,10 +331,8 @@ const AdminOverview: React.FC = () => {
           </Card>
         </div>
 
-        {/* Cards de Métricas (Linha 2) - Consultores (Neutro) e Outros */}
+        {/* Cards de Métricas (Linha 2) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-           
-           {/* Card Equipe: Neutro (Slate/Gray) */}
            <Card className="shadow-sm border-l-4 border-l-slate-500">
              <CardHeader className="pb-2">
                <CardTitle className="text-xs uppercase text-muted-foreground font-semibold tracking-wider flex items-center gap-2">
@@ -279,7 +386,7 @@ const AdminOverview: React.FC = () => {
            </Card>
         </div>
 
-        {/* Lista de Resultados Filtrados (Resumo) */}
+        {/* Lista de Resultados Filtrados */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-2 flex flex-col h-full">
             <CardHeader>
@@ -299,6 +406,8 @@ const AdminOverview: React.FC = () => {
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <Users className="w-3 h-3" /> 
                         {mockUsers.find(u => u.id === client.userId)?.name || 'N/A'}
+                        <span className="mx-1">•</span>
+                        {format(new Date(client.createdAt), "dd/MM/yyyy")}
                       </span>
                     </div>
                     <div className="flex items-center gap-3">

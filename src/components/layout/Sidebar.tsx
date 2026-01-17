@@ -1,3 +1,9 @@
+/**
+ * ARQUIVO: src/components/layout/Sidebar.tsx
+ * * ALTERAÇÕES:
+ * 1. Adição do item { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios' } na lista `adminLinks`.
+ */
+
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -12,7 +18,7 @@ import {
   LogOut,
   Menu,
   X,
-  PieChart // Adicionado ícone para diferenciar
+  PieChart // Já estava importado, agora será usado
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -31,7 +37,8 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
   };
 
   const adminLinks = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' }, // Renomeado
+    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios' }, // NOVO LINK
     { href: '/dashboard/clients', icon: Users, label: 'Clientes' },
     { href: '/dashboard/sectors', icon: Building2, label: 'Setores' },
     { href: '/dashboard/users', icon: UserCog, label: 'Usuários' },
