@@ -1,9 +1,9 @@
 /**
  * ARQUIVO: src/components/user/UserDashboard.tsx
  * * ATUALIZAÇÕES:
- * 1. Paginação Numérica: Adicionada lógica para mostrar botões de página (1, 2, 3...) permitindo navegação direta.
- * 2. Lógica Inteligente: Usa "..." quando há muitas páginas para manter o layout limpo.
- * 3. Mantido: Todas as funcionalidades anteriores (PDF Blob, Upload 20MB, Filtros, Visualizadores, Estilos).
+ * 1. Bloqueio de Status Finalizado: Se o cliente já for 'approved' ou 'rejected', o campo Status fica desabilitado.
+ * 2. Edição Permitida: Observações e Anexos (upload/remoção) continuam liberados mesmo para finalizados.
+ * 3. Mantido: Campos pessoais bloqueados na edição.
  */
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
@@ -62,7 +62,7 @@ import {
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { isSameDay, isSameMonth, subDays, isAfter, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
+import { isSameDay, isSameMonth, subDays, isAfter, startOfDay, endOfDay, isWithinInterval, isBefore } from 'date-fns';
 
 const UserDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -79,9 +79,9 @@ const UserDashboard: React.FC = () => {
   const [periodFilter, setPeriodFilter] = useState('all');
   const [customDate, setCustomDate] = useState<{ from: string; to: string }>({ from: '', to: '' });
 
-  // --- LÓGICA DE FILTRAGEM ---
+  // --- LÓGICA DE FILTRAGEM E ORDENAÇÃO ---
   const filteredClients = useMemo(() => {
-    return clients.filter(client => {
+    const filtered = clients.filter(client => {
       const termLower = searchTerm.toLowerCase();
       const termClean = searchTerm.replace(/\D/g, ''); 
       const clientCpfClean = client.cpf.replace(/\D/g, '');
@@ -121,6 +121,10 @@ const UserDashboard: React.FC = () => {
 
       return matchesSearch && matchesStatus && matchesPeriod;
     });
+
+    // ORDENAÇÃO: Mais recente primeiro
+    return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+
   }, [clients, searchTerm, statusFilter, periodFilter, customDate]);
 
   // --- LIMPAR FILTROS ---
@@ -152,7 +156,7 @@ const UserDashboard: React.FC = () => {
         pages.push(i);
       }
     } else {
-      pages.push(1); // Sempre mostra a primeira
+      pages.push(1);
       if (currentPage > 3) pages.push('...');
 
       let start = Math.max(2, currentPage - 1);
@@ -166,7 +170,7 @@ const UserDashboard: React.FC = () => {
       }
 
       if (currentPage < totalPages - 2) pages.push('...');
-      pages.push(totalPages); // Sempre mostra a última
+      pages.push(totalPages);
     }
     return pages;
   };
@@ -177,7 +181,6 @@ const UserDashboard: React.FC = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   
-  // Viewer States
   const [viewingFile, setViewingFile] = useState<string | null>(null);
   const [zoomScale, setZoomScale] = useState(1);
 
@@ -192,23 +195,21 @@ const UserDashboard: React.FC = () => {
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Variável para verificar se o status já está finalizado (para bloquear edição de status)
   const isFinalized = editingClient?.status === 'approved' || editingClient?.status === 'rejected';
 
-  // Reset Viewer
   useEffect(() => {
     if (!viewingFile) {
         setZoomScale(1);
     }
   }, [viewingFile]);
 
-  // Funções Auxiliares
   const formatCPF = (value: string) => value.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})/, '$1-$2').replace(/(-\d{2})\d+?$/, '$1');
   const formatPhone = (value: string) => value.replace(/\D/g, '').replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').replace(/(-\d{4})\d+?$/, '$1');
 
   // --- FUNÇÃO DOWNLOAD (BLOB) ---
   const handleDownload = () => {
     if (!viewingFile) return;
-    
     try {
         const arr = viewingFile.split(',');
         const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
@@ -241,10 +242,8 @@ const UserDashboard: React.FC = () => {
     }
   };
 
-  // --- FUNÇÃO ABRIR NOVA ABA (BLOB) ---
   const handleOpenNewTab = () => {
     if (!viewingFile) return;
-
     try {
         const arr = viewingFile.split(',');
         const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/pdf';
@@ -288,22 +287,15 @@ const UserDashboard: React.FC = () => {
     setIsDialogOpen(true);
   };
 
-  // --- UPLOAD MÁX 20MB ---
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const maxSize = 20 * 1024 * 1024; // 20MB
-
+      const maxSize = 20 * 1024 * 1024;
       if (file.size > maxSize) {
-        toast({
-          title: "Arquivo muito grande",
-          description: "O tamanho máximo permitido é de 20MB.",
-          variant: "destructive"
-        });
+        toast({ title: "Arquivo muito grande", description: "O tamanho máximo permitido é de 20MB.", variant: "destructive" });
         if (fileInputRef.current) fileInputRef.current.value = '';
         return;
       }
-
       const reader = new FileReader();
       reader.onloadend = () => setFilePreview(reader.result as string);
       reader.readAsDataURL(file);
@@ -318,11 +310,20 @@ const UserDashboard: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (editingClient) {
-      setClients((prev) => prev.map((c) => c.id === editingClient.id ? { ...c, ...formData, imageUrl: filePreview || undefined, updatedAt: new Date() } : c));
+      setClients((prev) => prev.map((c) => c.id === editingClient.id ? { 
+        ...c, 
+        status: formData.status, 
+        observations: formData.observations,
+        imageUrl: filePreview || undefined, 
+        updatedAt: new Date() 
+      } : c));
       toast({ title: 'Cliente atualizado!' });
     } else {
+      const existingIds = clients.map(c => parseInt(c.id)).filter(id => !isNaN(id));
+      const nextId = existingIds.length > 0 ? Math.max(...existingIds) + 1 : 1;
+
       const newClient: Client = {
-        id: String(Date.now()),
+        id: String(nextId),
         ...formData,
         status: 'pending',
         imageUrl: filePreview || undefined,
@@ -383,7 +384,7 @@ const UserDashboard: React.FC = () => {
                       onChange={(e) => setFormData({ ...formData, name: e.target.value })} 
                       required 
                       placeholder="Nome completo" 
-                      disabled={isFinalized} 
+                      disabled={!!editingClient} 
                     />
                   </div>
                   <div className="space-y-2">
@@ -395,7 +396,7 @@ const UserDashboard: React.FC = () => {
                       required 
                       placeholder="000.000.000-00" 
                       maxLength={14} 
-                      disabled={isFinalized} 
+                      disabled={!!editingClient} 
                     />
                   </div>
                   <div className="space-y-2">
@@ -406,7 +407,7 @@ const UserDashboard: React.FC = () => {
                       value={formData.email} 
                       onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
                       placeholder="email@exemplo.com" 
-                      disabled={isFinalized} 
+                      disabled={!!editingClient} 
                     />
                   </div>
                   <div className="space-y-2">
@@ -417,15 +418,20 @@ const UserDashboard: React.FC = () => {
                       onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })} 
                       placeholder="(00) 00000-0000" 
                       maxLength={15} 
-                      disabled={isFinalized} 
+                      disabled={!!editingClient} 
                     />
                   </div>
                 </div>
 
-                {editingClient && !isFinalized && (
+                {/* Status: Se já finalizado (aprovado/reprovado), fica desabilitado */}
+                {editingClient && (
                   <div className="space-y-2 bg-muted/50 p-4 rounded-lg border border-border shadow-sm">
                     <Label htmlFor="status" className="flex items-center gap-2 font-semibold">Status</Label>
-                    <Select value={formData.status} onValueChange={(value: any) => setFormData({ ...formData, status: value })}>
+                    <Select 
+                      value={formData.status} 
+                      onValueChange={(value: any) => setFormData({ ...formData, status: value })}
+                      disabled={isFinalized} // <--- BLOQUEIO AQUI
+                    >
                       <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="pending">Pendente</SelectItem>
@@ -438,16 +444,24 @@ const UserDashboard: React.FC = () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="observations">Observações</Label>
-                  <Textarea id="observations" value={formData.observations} onChange={(e) => setFormData({ ...formData, observations: e.target.value })} placeholder="Informações adicionais..." />
+                  <Textarea 
+                    id="observations" 
+                    value={formData.observations} 
+                    onChange={(e) => setFormData({ ...formData, observations: e.target.value })} 
+                    placeholder="Informações adicionais..."
+                    // Sempre habilitado
+                  />
                 </div>
 
                 <div className="space-y-2">
                   <Label>Anexo (Máx. 20MB)</Label>
                   <div className="border border-dashed rounded-lg p-4 bg-muted/20 hover:bg-muted/40 transition-colors">
                     <div className="flex flex-col items-center gap-3">
+                      
+                      {/* Anexo sempre editável, mesmo se finalizado */}
                       {!filePreview ? (
                         <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} className="w-full">
-                          <Upload className="w-4 h-4 mr-2" /> Anexar Arquivo
+                            <Upload className="w-4 h-4 mr-2" /> Anexar Arquivo
                         </Button>
                       ) : (
                         <div className="relative group w-full">
@@ -461,6 +475,7 @@ const UserDashboard: React.FC = () => {
                               <img src={filePreview} alt="Preview" className="w-full h-full object-contain" />
                             )}
                           </div>
+                          
                           <div className="flex items-center justify-between mt-2">
                             <span className="text-xs text-emerald-600 font-medium flex items-center">
                               {isPdf(filePreview) ? <FileText className="w-3 h-3 mr-1" /> : <ImageIcon className="w-3 h-3 mr-1" />} Arquivo anexado
@@ -469,6 +484,7 @@ const UserDashboard: React.FC = () => {
                           </div>
                         </div>
                       )}
+                      
                       <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleFileUpload} />
                     </div>
                   </div>
@@ -485,12 +501,9 @@ const UserDashboard: React.FC = () => {
           {/* --- VISUALIZADOR DE ARQUIVOS --- */}
           <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
             <DialogContent className="fixed !left-0 !top-0 !translate-x-0 !translate-y-0 w-screen h-screen max-w-none p-0 bg-transparent border-none shadow-none focus:outline-none [&>button]:hidden flex items-center justify-center pointer-events-none">
-               
                <DialogTitle className="sr-only">Visualização do Anexo</DialogTitle>
-
                <div className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto">
-                 
-                 {/* Toolbar FIXA NO TETO */}
+                 {/* Toolbar */}
                  <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 p-2 bg-black/80 backdrop-blur-md rounded-full shadow-2xl border border-white/10">
                    {!isPdf(viewingFile || '') && (
                      <>
@@ -506,58 +519,37 @@ const UserDashboard: React.FC = () => {
                        <div className="w-px h-4 bg-white/20 mx-1" />
                      </>
                    )}
-                   
                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={handleDownload} title="Baixar Arquivo">
                      <Download className="w-4 h-4" />
                    </Button>
-
                    {isPdf(viewingFile || '') && (
                      <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={handleOpenNewTab} title="Abrir em Nova Aba">
                         <ExternalLink className="w-4 h-4" />
                      </Button>
                    )}
-
                    <div className="w-px h-4 bg-white/20 mx-1" />
-                   
                    <Button variant="ghost" size="icon" className="text-white hover:bg-red-500/80 h-8 w-8 rounded-full" onClick={() => setViewingFile(null)} title="Fechar">
                      <X className="w-4 h-4" />
                    </Button>
                  </div>
-
                  {/* Área de Visualização */}
                  <div className="w-[95vw] h-[90vh] flex items-center justify-center relative mt-8">
-                    
                     {viewingFile && (
                         isPdf(viewingFile) ? (
                             <div className="w-full h-full bg-white rounded-lg shadow-2xl overflow-hidden border border-border">
-                                <object
-                                    data={viewingFile}
-                                    type="application/pdf"
-                                    className="w-full h-full"
-                                >
+                                <object data={viewingFile} type="application/pdf" className="w-full h-full">
                                     <div className="flex flex-col items-center justify-center h-full bg-white text-muted-foreground p-6 text-center">
                                       <p className="mb-4">Não foi possível exibir este PDF aqui.</p>
                                       <div className="flex gap-2">
-                                        <Button onClick={handleOpenNewTab} variant="default">
-                                            <ExternalLink className="w-4 h-4 mr-2" /> Abrir em Nova Aba
-                                        </Button>
-                                        <Button onClick={handleDownload} variant="outline">
-                                            <Download className="w-4 h-4 mr-2" /> Baixar
-                                        </Button>
+                                        <Button onClick={handleOpenNewTab} variant="default"><ExternalLink className="w-4 h-4 mr-2" /> Abrir em Nova Aba</Button>
+                                        <Button onClick={handleDownload} variant="outline"><Download className="w-4 h-4 mr-2" /> Baixar</Button>
                                       </div>
                                     </div>
                                 </object>
                             </div>
                         ) : (
                             <div className="w-full h-full flex items-center justify-center overflow-auto p-4">
-                                <img 
-                                    src={viewingFile} 
-                                    alt="Comprovante" 
-                                    className="rounded-lg shadow-2xl object-contain transition-transform duration-200 ease-out max-w-full max-h-full" 
-                                    style={{ 
-                                        transform: `scale(${zoomScale})`, 
-                                    }}
-                                />
+                                <img src={viewingFile} alt="Comprovante" className="rounded-lg shadow-2xl object-contain transition-transform duration-200 ease-out max-w-full max-h-full" style={{ transform: `scale(${zoomScale})` }} />
                             </div>
                         )
                     )}
@@ -565,196 +557,129 @@ const UserDashboard: React.FC = () => {
                </div>
             </DialogContent>
           </Dialog>
+
         </div>
 
-        <Card className="glass-card">
-          <CardHeader>
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-              <CardTitle className="text-xl">Lista de Clientes</CardTitle>
-              
-              <div className="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
-                <div className="relative w-full sm:w-[250px]">
-                  <Input 
-                    placeholder="Buscar por Nome ou CPF" 
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pr-10 h-7 text-xs" 
-                  />
-                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-                    <Search className="w-3 h-3" />
+          <Card className="glass-card">
+            <CardHeader>
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                <CardTitle className="text-xl">Lista de Clientes</CardTitle>
+                <div className="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
+                  <div className="relative w-full sm:w-[250px]">
+                    <Input placeholder="Buscar por Nome ou CPF" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pr-10 h-7 text-xs" />
+                    <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"><Search className="w-3 h-3" /></div>
                   </div>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <Select value={periodFilter} onValueChange={setPeriodFilter}>
-                    <SelectTrigger className="w-full sm:w-[150px] h-7 text-xs"> 
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <CalendarIcon className="w-3 h-3" />
-                        <span className="text-foreground truncate">
-                          {periodFilter === 'all' ? 'Período' : 
-                           periodFilter === 'custom' ? 'Personalizado' :
-                           periodFilter === 'today' ? 'Hoje' : 
-                           periodFilter === 'week' ? '7 Dias' : 'Mês'}
-                        </span>
+                  <div className="flex items-center gap-2">
+                    <Select value={periodFilter} onValueChange={setPeriodFilter}>
+                      <SelectTrigger className="w-full sm:w-[150px] h-7 text-xs"> 
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                          <CalendarIcon className="w-3 h-3" />
+                          <span className="text-foreground truncate">
+                            {periodFilter === 'all' ? 'Período' : periodFilter === 'custom' ? 'Personalizado' : periodFilter === 'today' ? 'Hoje' : periodFilter === 'week' ? '7 Dias' : 'Mês'}
+                          </span>
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">Todo o período</SelectItem>
+                        <SelectItem value="today">Hoje</SelectItem>
+                        <SelectItem value="week">Últimos 7 dias</SelectItem>
+                        <SelectItem value="month">Este Mês</SelectItem>
+                        <SelectItem value="custom">Personalizado...</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {periodFilter === 'custom' && (
+                      <div className="flex items-center gap-3 animate-in fade-in slide-in-from-left-2">
+                        <div className="relative w-[140px]">
+                          <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" />
+                          <Input type="date" className="w-full h-7 text-xs pl-10 [&::-webkit-calendar-picker-indicator]:hidden" value={customDate.from} onChange={(e) => setCustomDate(prev => ({ ...prev, from: e.target.value }))} />
+                        </div>
+                        <span className="text-xs text-muted-foreground">até</span>
+                        <div className="relative w-[140px]">
+                          <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" />
+                          <Input type="date" className="w-full h-7 text-xs pl-10 [&::-webkit-calendar-picker-indicator]:hidden" value={customDate.to} onChange={(e) => setCustomDate(prev => ({ ...prev, to: e.target.value }))} />
+                        </div>
                       </div>
+                    )}
+                  </div>
+                  <Select value={statusFilter} onValueChange={setStatusFilter}>
+                    <SelectTrigger className="w-full sm:w-[130px] h-7 text-xs">
+                      <div className="flex items-center gap-2 text-muted-foreground"><Filter className="w-3 h-3" /><span className="text-foreground">{statusFilter === 'all' ? 'Status' : statusFilter === 'approved' ? 'Aprovado' : statusFilter === 'pending' ? 'Pendente' : 'Reprovado'}</span></div>
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="all">Todo o período</SelectItem>
-                      <SelectItem value="today">Hoje</SelectItem>
-                      <SelectItem value="week">Últimos 7 dias</SelectItem>
-                      <SelectItem value="month">Este Mês</SelectItem>
-                      <SelectItem value="custom">Personalizado...</SelectItem>
+                      <SelectItem value="all">Todos</SelectItem>
+                      <SelectItem value="pending">Pendentes</SelectItem>
+                      <SelectItem value="approved">Aprovados</SelectItem>
+                      <SelectItem value="rejected">Reprovados</SelectItem>
                     </SelectContent>
                   </Select>
-
-                  {periodFilter === 'custom' && (
-                    <div className="flex items-center gap-3 animate-in fade-in slide-in-from-left-2">
-                      <div className="relative w-[140px]">
-                        <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" />
-                        <Input 
-                          type="date" 
-                          className="w-full h-7 text-xs pl-10 [&::-webkit-calendar-picker-indicator]:hidden" 
-                          value={customDate.from}
-                          onChange={(e) => setCustomDate(prev => ({ ...prev, from: e.target.value }))}
-                        />
-                      </div>
-                      <span className="text-xs text-muted-foreground">até</span>
-                      <div className="relative w-[140px]">
-                        <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" />
-                        <Input 
-                          type="date" 
-                          className="w-full h-7 text-xs pl-10 [&::-webkit-calendar-picker-indicator]:hidden" 
-                          value={customDate.to}
-                          onChange={(e) => setCustomDate(prev => ({ ...prev, to: e.target.value }))}
-                        />
-                      </div>
-                    </div>
+                  {(searchTerm !== '' || statusFilter !== 'all' || periodFilter !== 'all') && (
+                    <Button variant="ghost" size="icon" onClick={clearFilters} className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0" title="Limpar Filtros"><Eraser className="w-4 h-4" /></Button>
                   )}
                 </div>
-
-                <Select value={statusFilter} onValueChange={setStatusFilter}>
-                  <SelectTrigger className="w-full sm:w-[130px] h-7 text-xs">
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <Filter className="w-3 h-3" />
-                      <span className="text-foreground">
-                        {statusFilter === 'all' ? 'Status' : 
-                         statusFilter === 'approved' ? 'Aprovado' : 
-                         statusFilter === 'pending' ? 'Pendente' : 'Reprovado'}
-                      </span>
-                    </div>
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="pending">Pendentes</SelectItem>
-                    <SelectItem value="approved">Aprovados</SelectItem>
-                    <SelectItem value="rejected">Reprovados</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                {(searchTerm !== '' || statusFilter !== 'all' || periodFilter !== 'all') && (
-                  <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    onClick={clearFilters}
-                    className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0"
-                    title="Limpar Filtros"
-                  >
-                    <Eraser className="w-4 h-4" />
-                  </Button>
-                )}
               </div>
-            </div>
-          </CardHeader>
+            </CardHeader>
 
-          <CardContent>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[80px]">ID</TableHead>
-                    <TableHead>Cliente</TableHead>
-                    <TableHead>CPF</TableHead>
-                    <TableHead>Telefone</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead className="text-center w-[120px]">Ações</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paginatedClients.length > 0 ? (
-                    paginatedClients.map((client) => (
-                      <TableRow key={client.id}>
-                        <TableCell className="text-xs font-semibold text-muted-foreground">#{client.id}</TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="font-medium">{client.name}</p>
-                            <p className="text-sm text-muted-foreground">{client.email || '-'}</p>
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground font-medium">{client.cpf}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground font-medium">{client.phone || '-'}</TableCell>
-                        <TableCell>{getStatusBadge(client.status)}</TableCell>
-                        <TableCell className="text-center">
-                          <div className="flex items-center justify-center gap-2">
-                            {/* BOTÃO OLHINHO: PRETO BASE, VERDE HOVER */}
-                            {client.imageUrl && (
-                              <Button variant="outline" size="icon" onClick={() => setViewingFile(client.imageUrl!)} className="border-zinc-200 text-[#111] hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 shadow-sm transition-all h-7 w-7">
-                                <Eye className="w-3.5 h-3.5" />
-                              </Button>
-                            )}
-                            {/* BOTÃO LÁPIS: PRETO BASE, AMARELO HOVER */}
-                            <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(client)} className="text-[#111] hover:text-amber-600 hover:bg-amber-50 h-7 w-7">
-                              <Edit className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
+            <CardContent>
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
                     <TableRow>
-                      <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">
-                        Nenhum cliente encontrado com os filtros atuais.
-                      </TableCell>
+                      <TableHead className="w-[80px]">ID</TableHead>
+                      <TableHead>Cliente</TableHead>
+                      <TableHead>CPF</TableHead>
+                      <TableHead>Telefone</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-center w-[120px]">Ações</TableHead>
                     </TableRow>
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-            
-            {totalPages > 1 && (
-              <div className="flex items-center justify-between pt-4 border-t">
-                 <span className="text-xs text-muted-foreground hidden sm:block">
-                    Mostrando {startIndex + 1} a {Math.min(startIndex + itemsPerPage, filteredClients.length)} de {filteredClients.length} resultados
-                 </span>
-                 
-                 <div className="flex items-center gap-1 mx-auto sm:mx-0">
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={handlePrevPage} disabled={currentPage === 1}>
-                        <ChevronLeft className="h-4 w-4" />
-                    </Button>
-                    
-                    {getPageNumbers().map((page, index) => (
-                        page === '...' ? (
-                            <span key={`ellipsis-${index}`} className="px-2 text-xs text-muted-foreground">...</span>
-                        ) : (
-                            <Button 
-                                key={page} 
-                                variant={currentPage === page ? "default" : "outline"} 
-                                size="sm" 
-                                className={`h-8 w-8 text-xs ${currentPage === page ? 'bg-primary text-primary-foreground' : ''}`}
-                                onClick={() => setCurrentPage(page as number)}
-                            >
-                                {page}
-                            </Button>
-                        )
-                    ))}
-
-                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleNextPage} disabled={currentPage >= totalPages}>
-                        <ChevronRight className="h-4 w-4" />
-                    </Button>
-                 </div>
+                  </TableHeader>
+                  <TableBody>
+                    {paginatedClients.length > 0 ? (
+                      paginatedClients.map((client) => (
+                        <TableRow key={client.id}>
+                          <TableCell className="text-xs font-semibold text-muted-foreground">#{client.id}</TableCell>
+                          <TableCell>
+                            <div>
+                              <p className="font-medium">{client.name}</p>
+                              <p className="text-sm text-muted-foreground">{client.email || '-'}</p>
+                            </div>
+                          </TableCell>
+                          <TableCell className="text-xs text-muted-foreground font-medium">{client.cpf}</TableCell>
+                          <TableCell className="text-xs text-muted-foreground font-medium">{client.phone || '-'}</TableCell>
+                          <TableCell>{getStatusBadge(client.status)}</TableCell>
+                          <TableCell className="text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              {client.imageUrl && (
+                                <Button variant="outline" size="icon" onClick={() => setViewingFile(client.imageUrl!)} className="border-zinc-200 text-[#111] hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 shadow-sm transition-all h-7 w-7"><Eye className="w-3.5 h-3.5" /></Button>
+                              )}
+                              <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(client)} className="text-[#111] hover:text-amber-600 hover:bg-amber-50 h-7 w-7"><Edit className="w-3.5 h-3.5" /></Button>
+                            </div>
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6} className="h-24 text-center text-muted-foreground">Nenhum cliente encontrado com os filtros atuais.</TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
               </div>
-            )}
-          </CardContent>
-        </Card>
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between pt-4 border-t">
+                  <span className="text-xs text-muted-foreground hidden sm:block">Mostrando {startIndex + 1} a {Math.min(startIndex + itemsPerPage, filteredClients.length)} de {filteredClients.length} resultados</span>
+                  <div className="flex items-center gap-1 mx-auto sm:mx-0">
+                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={handlePrevPage} disabled={currentPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
+                      {getPageNumbers().map((page, index) => (
+                          page === '...' ? (<span key={`ellipsis-${index}`} className="px-2 text-xs text-muted-foreground">...</span>) : (
+                              <Button key={page} variant={currentPage === page ? "default" : "outline"} size="sm" className={`h-8 w-8 text-xs ${currentPage === page ? 'bg-primary text-primary-foreground' : ''}`} onClick={() => setCurrentPage(page as number)}>{page}</Button>
+                          )
+                      ))}
+                      <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleNextPage} disabled={currentPage >= totalPages}><ChevronRight className="h-4 w-4" /></Button>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
       </div>
     </DashboardLayout>
   );
