@@ -1,8 +1,9 @@
 /**
  * ARQUIVO: src/components/user/UserDashboard.tsx
  * * ATUALIZAÇÕES:
- * 1. Coluna ID: Fonte alterada para 'font-semibold text-muted-foreground' (mais agradável).
- * 2. Coluna ID: Adicionado prefixo '#' antes do valor.
+ * 1. Paginação Numérica: Adicionada lógica para mostrar botões de página (1, 2, 3...) permitindo navegação direta.
+ * 2. Lógica Inteligente: Usa "..." quando há muitas páginas para manter o layout limpo.
+ * 3. Mantido: Todas as funcionalidades anteriores (PDF Blob, Upload 20MB, Filtros, Visualizadores, Estilos).
  */
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
@@ -53,7 +54,11 @@ import {
   Search,
   Filter,
   CalendarIcon,
-  Eraser
+  Eraser,
+  ZoomIn,
+  ZoomOut,
+  Download,
+  ExternalLink
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -72,8 +77,6 @@ const UserDashboard: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [periodFilter, setPeriodFilter] = useState('all');
-  
-  // Estado para datas personalizadas
   const [customDate, setCustomDate] = useState<{ from: string; to: string }>({ from: '', to: '' });
 
   // --- LÓGICA DE FILTRAGEM ---
@@ -89,6 +92,7 @@ const UserDashboard: React.FC = () => {
       const matchesSearch = searchTerm === '' || matchesName || matchesCpf;
       const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
 
+      // Lógica de Data
       let matchesPeriod = true;
       const clientDate = new Date(client.createdAt);
       const today = new Date();
@@ -96,13 +100,23 @@ const UserDashboard: React.FC = () => {
       if (periodFilter === 'today') {
         matchesPeriod = isSameDay(clientDate, today);
       } else if (periodFilter === 'week') {
-        matchesPeriod = isAfter(clientDate, subDays(today, 7));
+        const weekAgo = startOfDay(subDays(today, 7));
+        matchesPeriod = isAfter(clientDate, weekAgo);
       } else if (periodFilter === 'month') {
         matchesPeriod = isSameMonth(clientDate, today);
-      } else if (periodFilter === 'custom' && customDate.from && customDate.to) {
-        const startDate = startOfDay(new Date(customDate.from + 'T00:00:00'));
-        const endDate = endOfDay(new Date(customDate.to + 'T00:00:00'));
-        matchesPeriod = isWithinInterval(clientDate, { start: startDate, end: endDate });
+      } else if (periodFilter === 'custom') {
+        if (customDate.from || customDate.to) {
+            const startDate = customDate.from ? startOfDay(new Date(customDate.from + 'T00:00:00')) : null;
+            const endDate = customDate.to ? endOfDay(new Date(customDate.to + 'T00:00:00')) : null;
+
+            if (startDate && endDate) {
+                matchesPeriod = isWithinInterval(clientDate, { start: startDate, end: endDate });
+            } else if (startDate) {
+                matchesPeriod = isAfter(clientDate, startDate) || isSameDay(clientDate, startDate);
+            } else if (endDate) {
+                matchesPeriod = isBefore(clientDate, endDate) || isSameDay(clientDate, endDate);
+            }
+        }
       }
 
       return matchesSearch && matchesStatus && matchesPeriod;
@@ -117,7 +131,7 @@ const UserDashboard: React.FC = () => {
     setCustomDate({ from: '', to: '' });
   };
 
-  // --- ESTADOS DE PAGINAÇÃO ---
+  // --- PAGINAÇÃO ---
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
 
@@ -128,12 +142,44 @@ const UserDashboard: React.FC = () => {
   const handleNextPage = () => { if (currentPage < totalPages) setCurrentPage(prev => prev + 1); };
   const handlePrevPage = () => { if (currentPage > 1) setCurrentPage(prev => prev - 1); };
   
+  // Função para gerar os números das páginas
+  const getPageNumbers = () => {
+    const pages = [];
+    const maxVisiblePages = 5;
+
+    if (totalPages <= maxVisiblePages) {
+      for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+      }
+    } else {
+      pages.push(1); // Sempre mostra a primeira
+      if (currentPage > 3) pages.push('...');
+
+      let start = Math.max(2, currentPage - 1);
+      let end = Math.min(totalPages - 1, currentPage + 1);
+
+      if (currentPage <= 3) end = 4;
+      if (currentPage >= totalPages - 2) start = totalPages - 3;
+
+      for (let i = start; i <= end; i++) {
+        if (i > 1 && i < totalPages) pages.push(i);
+      }
+
+      if (currentPage < totalPages - 2) pages.push('...');
+      pages.push(totalPages); // Sempre mostra a última
+    }
+    return pages;
+  };
+
   useEffect(() => { setCurrentPage(1); }, [searchTerm, statusFilter, periodFilter, customDate]);
 
-  // --- ESTADOS DE EDIÇÃO/CRIAÇÃO ---
+  // --- ESTADOS DE EDIÇÃO/VISUALIZAÇÃO ---
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
+  
+  // Viewer States
   const [viewingFile, setViewingFile] = useState<string | null>(null);
+  const [zoomScale, setZoomScale] = useState(1);
 
   const [formData, setFormData] = useState({
     name: '',
@@ -144,12 +190,78 @@ const UserDashboard: React.FC = () => {
     status: 'pending' as 'pending' | 'approved' | 'rejected',
   });
   const [filePreview, setFilePreview] = useState<string | null>(null);
-  
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // --- FUNÇÕES DE FORMATAÇÃO ---
+  const isFinalized = editingClient?.status === 'approved' || editingClient?.status === 'rejected';
+
+  // Reset Viewer
+  useEffect(() => {
+    if (!viewingFile) {
+        setZoomScale(1);
+    }
+  }, [viewingFile]);
+
+  // Funções Auxiliares
   const formatCPF = (value: string) => value.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})/, '$1-$2').replace(/(-\d{2})\d+?$/, '$1');
   const formatPhone = (value: string) => value.replace(/\D/g, '').replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').replace(/(-\d{4})\d+?$/, '$1');
+
+  // --- FUNÇÃO DOWNLOAD (BLOB) ---
+  const handleDownload = () => {
+    if (!viewingFile) return;
+    
+    try {
+        const arr = viewingFile.split(',');
+        const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        const url = URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `anexo-cliente-${Date.now()}.${mime.includes('pdf') ? 'pdf' : 'png'}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        toast({ title: 'Download iniciado', description: 'Seu arquivo está sendo baixado.' });
+    } catch (e) {
+        console.error("Erro ao baixar:", e);
+        const link = document.createElement('a');
+        link.href = viewingFile;
+        link.download = `anexo-cliente-${Date.now()}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+    }
+  };
+
+  // --- FUNÇÃO ABRIR NOVA ABA (BLOB) ---
+  const handleOpenNewTab = () => {
+    if (!viewingFile) return;
+
+    try {
+        const arr = viewingFile.split(',');
+        const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/pdf';
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) {
+            u8arr[n] = bstr.charCodeAt(n);
+        }
+        const blob = new Blob([u8arr], { type: mime });
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, '_blank');
+    } catch (e) {
+        console.error("Erro ao abrir blob:", e);
+        toast({ title: 'Erro ao abrir', description: 'Não foi possível processar o arquivo.', variant: 'destructive' });
+    }
+  };
 
   const resetForm = () => {
     setFormData({ name: '', email: '', cpf: '', phone: '', observations: '', status: 'pending' });
@@ -176,9 +288,22 @@ const UserDashboard: React.FC = () => {
     setIsDialogOpen(true);
   };
 
+  // --- UPLOAD MÁX 20MB ---
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      const maxSize = 20 * 1024 * 1024; // 20MB
+
+      if (file.size > maxSize) {
+        toast({
+          title: "Arquivo muito grande",
+          description: "O tamanho máximo permitido é de 20MB.",
+          variant: "destructive"
+        });
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
       const reader = new FileReader();
       reader.onloadend = () => setFilePreview(reader.result as string);
       reader.readAsDataURL(file);
@@ -221,7 +346,7 @@ const UserDashboard: React.FC = () => {
     }
   };
 
-  const isPdf = (dataUrl: string) => dataUrl.startsWith('data:application/pdf');
+  const isPdf = (dataUrl: string) => dataUrl.startsWith('data:application/pdf') || dataUrl.endsWith('.pdf');
 
   return (
     <DashboardLayout>
@@ -232,14 +357,14 @@ const UserDashboard: React.FC = () => {
               Gerenciar Meus Clientes
             </h1>
             <p className="text-muted-foreground mt-1">
-              Lista completa dos seus cadastros
+              Lista completa dos cadastros
             </p>
           </div>
           
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="hero" onClick={() => handleOpenDialog()} className="h-11 px-6 text-base">
-                <Plus className="w-5 h-5 mr-2" /> Novo Cliente
+              <Button variant="hero" onClick={() => handleOpenDialog()} className="shadow-lg hover:shadow-xl transition-all">
+                <Plus className="w-4 h-4 mr-2" /> Novo Cliente
               </Button>
             </DialogTrigger>
             
@@ -251,24 +376,53 @@ const UserDashboard: React.FC = () => {
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Nome *</Label>
-                    <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required placeholder="Nome completo" />
+                    <Label htmlFor="name">Nome</Label>
+                    <Input 
+                      id="name" 
+                      value={formData.name} 
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })} 
+                      required 
+                      placeholder="Nome completo" 
+                      disabled={isFinalized} 
+                    />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="cpf">CPF *</Label>
-                    <Input id="cpf" value={formData.cpf} onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })} required placeholder="000.000.000-00" maxLength={14} />
+                    <Label htmlFor="cpf">CPF</Label>
+                    <Input 
+                      id="cpf" 
+                      value={formData.cpf} 
+                      onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })} 
+                      required 
+                      placeholder="000.000.000-00" 
+                      maxLength={14} 
+                      disabled={isFinalized} 
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="email@exemplo.com" />
+                    <Input 
+                      id="email" 
+                      type="email" 
+                      value={formData.email} 
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
+                      placeholder="email@exemplo.com" 
+                      disabled={isFinalized} 
+                    />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="phone">Telefone</Label>
-                    <Input id="phone" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })} placeholder="(00) 00000-0000" maxLength={15} />
+                    <Input 
+                      id="phone" 
+                      value={formData.phone} 
+                      onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })} 
+                      placeholder="(00) 00000-0000" 
+                      maxLength={15} 
+                      disabled={isFinalized} 
+                    />
                   </div>
                 </div>
 
-                {editingClient && (
+                {editingClient && !isFinalized && (
                   <div className="space-y-2 bg-muted/50 p-4 rounded-lg border border-border shadow-sm">
                     <Label htmlFor="status" className="flex items-center gap-2 font-semibold">Status</Label>
                     <Select value={formData.status} onValueChange={(value: any) => setFormData({ ...formData, status: value })}>
@@ -288,7 +442,7 @@ const UserDashboard: React.FC = () => {
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Anexo</Label>
+                  <Label>Anexo (Máx. 20MB)</Label>
                   <div className="border border-dashed rounded-lg p-4 bg-muted/20 hover:bg-muted/40 transition-colors">
                     <div className="flex flex-col items-center gap-3">
                       {!filePreview ? (
@@ -328,13 +482,86 @@ const UserDashboard: React.FC = () => {
             </DialogContent>
           </Dialog>
 
+          {/* --- VISUALIZADOR DE ARQUIVOS --- */}
           <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
-            <DialogContent className="max-w-4xl p-0 overflow-hidden bg-transparent border-none shadow-none [&>button]:hidden">
-               <div className="relative w-full h-[85vh] flex items-center justify-center pointer-events-auto">
-                 <button onClick={() => setViewingFile(null)} className="absolute top-4 right-4 z-50 p-2 bg-white text-black rounded-full shadow-lg hover:bg-zinc-200 hover:scale-105 transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-white">
-                   <X className="w-6 h-6" />
-                 </button>
-                 {viewingFile && (isPdf(viewingFile) ? <iframe src={viewingFile} className="w-full h-full rounded-lg shadow-2xl bg-white" title="Visualização" /> : <img src={viewingFile} alt="Comprovante" className="max-w-full max-h-full rounded-lg shadow-2xl object-contain bg-black/60 backdrop-blur-sm" />)}
+            <DialogContent className="fixed !left-0 !top-0 !translate-x-0 !translate-y-0 w-screen h-screen max-w-none p-0 bg-transparent border-none shadow-none focus:outline-none [&>button]:hidden flex items-center justify-center pointer-events-none">
+               
+               <DialogTitle className="sr-only">Visualização do Anexo</DialogTitle>
+
+               <div className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto">
+                 
+                 {/* Toolbar FIXA NO TETO */}
+                 <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 p-2 bg-black/80 backdrop-blur-md rounded-full shadow-2xl border border-white/10">
+                   {!isPdf(viewingFile || '') && (
+                     <>
+                       <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.max(0.5, s - 0.25))} title="Diminuir Zoom">
+                         <ZoomOut className="w-4 h-4" />
+                       </Button>
+                       <span className="text-xs font-medium text-white w-12 text-center select-none">
+                         {Math.round(zoomScale * 100)}%
+                       </span>
+                       <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.min(3, s + 0.25))} title="Aumentar Zoom">
+                         <ZoomIn className="w-4 h-4" />
+                       </Button>
+                       <div className="w-px h-4 bg-white/20 mx-1" />
+                     </>
+                   )}
+                   
+                   <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={handleDownload} title="Baixar Arquivo">
+                     <Download className="w-4 h-4" />
+                   </Button>
+
+                   {isPdf(viewingFile || '') && (
+                     <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={handleOpenNewTab} title="Abrir em Nova Aba">
+                        <ExternalLink className="w-4 h-4" />
+                     </Button>
+                   )}
+
+                   <div className="w-px h-4 bg-white/20 mx-1" />
+                   
+                   <Button variant="ghost" size="icon" className="text-white hover:bg-red-500/80 h-8 w-8 rounded-full" onClick={() => setViewingFile(null)} title="Fechar">
+                     <X className="w-4 h-4" />
+                   </Button>
+                 </div>
+
+                 {/* Área de Visualização */}
+                 <div className="w-[95vw] h-[90vh] flex items-center justify-center relative mt-8">
+                    
+                    {viewingFile && (
+                        isPdf(viewingFile) ? (
+                            <div className="w-full h-full bg-white rounded-lg shadow-2xl overflow-hidden border border-border">
+                                <object
+                                    data={viewingFile}
+                                    type="application/pdf"
+                                    className="w-full h-full"
+                                >
+                                    <div className="flex flex-col items-center justify-center h-full bg-white text-muted-foreground p-6 text-center">
+                                      <p className="mb-4">Não foi possível exibir este PDF aqui.</p>
+                                      <div className="flex gap-2">
+                                        <Button onClick={handleOpenNewTab} variant="default">
+                                            <ExternalLink className="w-4 h-4 mr-2" /> Abrir em Nova Aba
+                                        </Button>
+                                        <Button onClick={handleDownload} variant="outline">
+                                            <Download className="w-4 h-4 mr-2" /> Baixar
+                                        </Button>
+                                      </div>
+                                    </div>
+                                </object>
+                            </div>
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center overflow-auto p-4">
+                                <img 
+                                    src={viewingFile} 
+                                    alt="Comprovante" 
+                                    className="rounded-lg shadow-2xl object-contain transition-transform duration-200 ease-out max-w-full max-h-full" 
+                                    style={{ 
+                                        transform: `scale(${zoomScale})`, 
+                                    }}
+                                />
+                            </div>
+                        )
+                    )}
+                 </div>
                </div>
             </DialogContent>
           </Dialog>
@@ -345,10 +572,7 @@ const UserDashboard: React.FC = () => {
             <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
               <CardTitle className="text-xl">Lista de Clientes</CardTitle>
               
-              {/* --- BARRA DE FILTROS --- */}
               <div className="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
-                
-                {/* 1. Busca (Nome, CPF) */}
                 <div className="relative w-full sm:w-[250px]">
                   <Input 
                     placeholder="Buscar por Nome ou CPF" 
@@ -361,7 +585,6 @@ const UserDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 2. Filtro de Período */}
                 <div className="flex items-center gap-2">
                   <Select value={periodFilter} onValueChange={setPeriodFilter}>
                     <SelectTrigger className="w-full sm:w-[150px] h-7 text-xs"> 
@@ -384,24 +607,23 @@ const UserDashboard: React.FC = () => {
                     </SelectContent>
                   </Select>
 
-                  {/* Inputs de Data */}
                   {periodFilter === 'custom' && (
-                    <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2">
-                      <div className="relative w-[130px]">
-                        <CalendarIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground z-10 pointer-events-none" />
+                    <div className="flex items-center gap-3 animate-in fade-in slide-in-from-left-2">
+                      <div className="relative w-[140px]">
+                        <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" />
                         <Input 
                           type="date" 
-                          className="w-full h-7 text-xs pl-7" 
+                          className="w-full h-7 text-xs pl-10 [&::-webkit-calendar-picker-indicator]:hidden" 
                           value={customDate.from}
                           onChange={(e) => setCustomDate(prev => ({ ...prev, from: e.target.value }))}
                         />
                       </div>
                       <span className="text-xs text-muted-foreground">até</span>
-                      <div className="relative w-[130px]">
-                        <CalendarIcon className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground z-10 pointer-events-none" />
+                      <div className="relative w-[140px]">
+                        <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" />
                         <Input 
                           type="date" 
-                          className="w-full h-7 text-xs pl-7" 
+                          className="w-full h-7 text-xs pl-10 [&::-webkit-calendar-picker-indicator]:hidden" 
                           value={customDate.to}
                           onChange={(e) => setCustomDate(prev => ({ ...prev, to: e.target.value }))}
                         />
@@ -410,7 +632,6 @@ const UserDashboard: React.FC = () => {
                   )}
                 </div>
 
-                {/* 3. Filtro de Status */}
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
                   <SelectTrigger className="w-full sm:w-[130px] h-7 text-xs">
                     <div className="flex items-center gap-2 text-muted-foreground">
@@ -430,7 +651,6 @@ const UserDashboard: React.FC = () => {
                   </SelectContent>
                 </Select>
 
-                {/* 4. Botão Limpar Filtros */}
                 {(searchTerm !== '' || statusFilter !== 'all' || periodFilter !== 'all') && (
                   <Button 
                     variant="ghost" 
@@ -447,7 +667,6 @@ const UserDashboard: React.FC = () => {
           </CardHeader>
 
           <CardContent>
-            {/* ... tabela ... */}
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
@@ -464,10 +683,7 @@ const UserDashboard: React.FC = () => {
                   {paginatedClients.length > 0 ? (
                     paginatedClients.map((client) => (
                       <TableRow key={client.id}>
-                        {/* ID ESTILIZADO COM # */}
-                        <TableCell className="text-xs font-semibold text-muted-foreground">
-                          #{client.id}
-                        </TableCell>
+                        <TableCell className="text-xs font-semibold text-muted-foreground">#{client.id}</TableCell>
                         <TableCell>
                           <div>
                             <p className="font-medium">{client.name}</p>
@@ -479,12 +695,14 @@ const UserDashboard: React.FC = () => {
                         <TableCell>{getStatusBadge(client.status)}</TableCell>
                         <TableCell className="text-center">
                           <div className="flex items-center justify-center gap-2">
+                            {/* BOTÃO OLHINHO: PRETO BASE, VERDE HOVER */}
                             {client.imageUrl && (
-                              <Button variant="outline" size="icon" onClick={() => setViewingFile(client.imageUrl!)} className="bg-blue-50 border-blue-200 text-blue-600 hover:bg-blue-100 hover:text-blue-700 hover:border-blue-300 shadow-sm transition-all h-7 w-7">
+                              <Button variant="outline" size="icon" onClick={() => setViewingFile(client.imageUrl!)} className="border-zinc-200 text-[#111] hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 shadow-sm transition-all h-7 w-7">
                                 <Eye className="w-3.5 h-3.5" />
                               </Button>
                             )}
-                            <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(client)} className="text-yellow-600 hover:text-yellow-700 hover:bg-yellow-50 h-7 w-7">
+                            {/* BOTÃO LÁPIS: PRETO BASE, AMARELO HOVER */}
+                            <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(client)} className="text-[#111] hover:text-amber-600 hover:bg-amber-50 h-7 w-7">
                               <Edit className="w-3.5 h-3.5" />
                             </Button>
                           </div>
@@ -503,10 +721,36 @@ const UserDashboard: React.FC = () => {
             </div>
             
             {totalPages > 1 && (
-              <div className="flex items-center justify-end gap-2 pt-4 border-t">
-                <span className="text-xs text-muted-foreground mr-2">Página {currentPage} de {totalPages}</span>
-                <Button variant="outline" size="sm" onClick={handlePrevPage} disabled={currentPage === 1} className="h-8 w-8 p-0"><ChevronLeft className="h-4 w-4" /></Button>
-                <Button variant="outline" size="sm" onClick={handleNextPage} disabled={currentPage >= totalPages} className="h-8 w-8 p-0"><ChevronRight className="h-4 w-4" /></Button>
+              <div className="flex items-center justify-between pt-4 border-t">
+                 <span className="text-xs text-muted-foreground hidden sm:block">
+                    Mostrando {startIndex + 1} a {Math.min(startIndex + itemsPerPage, filteredClients.length)} de {filteredClients.length} resultados
+                 </span>
+                 
+                 <div className="flex items-center gap-1 mx-auto sm:mx-0">
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={handlePrevPage} disabled={currentPage === 1}>
+                        <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    
+                    {getPageNumbers().map((page, index) => (
+                        page === '...' ? (
+                            <span key={`ellipsis-${index}`} className="px-2 text-xs text-muted-foreground">...</span>
+                        ) : (
+                            <Button 
+                                key={page} 
+                                variant={currentPage === page ? "default" : "outline"} 
+                                size="sm" 
+                                className={`h-8 w-8 text-xs ${currentPage === page ? 'bg-primary text-primary-foreground' : ''}`}
+                                onClick={() => setCurrentPage(page as number)}
+                            >
+                                {page}
+                            </Button>
+                        )
+                    ))}
+
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleNextPage} disabled={currentPage >= totalPages}>
+                        <ChevronRight className="h-4 w-4" />
+                    </Button>
+                 </div>
               </div>
             )}
           </CardContent>
