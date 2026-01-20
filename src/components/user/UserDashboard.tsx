@@ -1,9 +1,9 @@
 /**
  * ARQUIVO: src/components/user/UserDashboard.tsx
  * * ATUALIZAÇÕES:
- * 1. Bloqueio de Status Finalizado: Se o cliente já for 'approved' ou 'rejected', o campo Status fica desabilitado.
- * 2. Edição Permitida: Observações e Anexos (upload/remoção) continuam liberados mesmo para finalizados.
- * 3. Mantido: Campos pessoais bloqueados na edição.
+ * 1. Layout: Retornado para 3 colunas na linha de contatos (Email, Telefone, CPF).
+ * 2. Largura do Modal: Aumentada de max-w-2xl para max-w-4xl para acomodar melhor os 3 cards.
+ * 3. Mantido: Estilo visual, funcionalidades de copy, anexo, etc.
  */
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
@@ -58,11 +58,21 @@ import {
   ZoomIn,
   ZoomOut,
   Download,
-  ExternalLink
+  ExternalLink,
+  User,
+  Mail,
+  Phone,
+  Hash,
+  MapPin,
+  Clock,
+  Copy,
+  CheckCircle2,
+  CalendarDays,
+  FileCheck
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import { isSameDay, isSameMonth, subDays, isAfter, startOfDay, endOfDay, isWithinInterval, isBefore } from 'date-fns';
+import { isSameDay, isSameMonth, subDays, isAfter, startOfDay, endOfDay, isWithinInterval, isBefore, format } from 'date-fns';
 
 const UserDashboard: React.FC = () => {
   const { user } = useAuth();
@@ -122,7 +132,6 @@ const UserDashboard: React.FC = () => {
       return matchesSearch && matchesStatus && matchesPeriod;
     });
 
-    // ORDENAÇÃO: Mais recente primeiro
     return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   }, [clients, searchTerm, statusFilter, periodFilter, customDate]);
@@ -146,7 +155,6 @@ const UserDashboard: React.FC = () => {
   const handleNextPage = () => { if (currentPage < totalPages) setCurrentPage(prev => prev + 1); };
   const handlePrevPage = () => { if (currentPage > 1) setCurrentPage(prev => prev - 1); };
   
-  // Função para gerar os números das páginas
   const getPageNumbers = () => {
     const pages = [];
     const maxVisiblePages = 5;
@@ -158,17 +166,13 @@ const UserDashboard: React.FC = () => {
     } else {
       pages.push(1);
       if (currentPage > 3) pages.push('...');
-
       let start = Math.max(2, currentPage - 1);
       let end = Math.min(totalPages - 1, currentPage + 1);
-
       if (currentPage <= 3) end = 4;
       if (currentPage >= totalPages - 2) start = totalPages - 3;
-
       for (let i = start; i <= end; i++) {
         if (i > 1 && i < totalPages) pages.push(i);
       }
-
       if (currentPage < totalPages - 2) pages.push('...');
       pages.push(totalPages);
     }
@@ -177,10 +181,12 @@ const UserDashboard: React.FC = () => {
 
   useEffect(() => { setCurrentPage(1); }, [searchTerm, statusFilter, periodFilter, customDate]);
 
-  // --- ESTADOS DE EDIÇÃO/VISUALIZAÇÃO ---
+  // --- ESTADOS DE INTERFACE ---
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
-  
+  const [viewingClientDetails, setViewingClientDetails] = useState<Client | null>(null);
+
+  // Estados do Visualizador de Arquivo
   const [viewingFile, setViewingFile] = useState<string | null>(null);
   const [zoomScale, setZoomScale] = useState(1);
 
@@ -195,7 +201,6 @@ const UserDashboard: React.FC = () => {
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Variável para verificar se o status já está finalizado (para bloquear edição de status)
   const isFinalized = editingClient?.status === 'approved' || editingClient?.status === 'rejected';
 
   useEffect(() => {
@@ -207,7 +212,18 @@ const UserDashboard: React.FC = () => {
   const formatCPF = (value: string) => value.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})/, '$1-$2').replace(/(-\d{2})\d+?$/, '$1');
   const formatPhone = (value: string) => value.replace(/\D/g, '').replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').replace(/(-\d{4})\d+?$/, '$1');
 
-  // --- FUNÇÃO DOWNLOAD (BLOB) ---
+  // --- UTILS ---
+  const copyToClipboard = (text: string, label: string) => {
+    if(!text) return;
+    navigator.clipboard.writeText(text);
+    toast({ 
+        title: "Copiado!", 
+        description: `${label} copiado para a área de transferência.`,
+        duration: 2000
+    });
+  };
+
+  // --- FUNÇÕES DE ARQUIVO ---
   const handleDownload = () => {
     if (!viewingFile) return;
     try {
@@ -221,7 +237,6 @@ const UserDashboard: React.FC = () => {
         }
         const blob = new Blob([u8arr], { type: mime });
         const url = URL.createObjectURL(blob);
-        
         const link = document.createElement('a');
         link.href = url;
         link.download = `anexo-cliente-${Date.now()}.${mime.includes('pdf') ? 'pdf' : 'png'}`;
@@ -229,7 +244,6 @@ const UserDashboard: React.FC = () => {
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
-        
         toast({ title: 'Download iniciado', description: 'Seu arquivo está sendo baixado.' });
     } catch (e) {
         console.error("Erro ao baixar:", e);
@@ -341,9 +355,9 @@ const UserDashboard: React.FC = () => {
 
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'approved': return <Badge variant="outline" className="bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-50">Aprovado</Badge>;
-      case 'rejected': return <Badge variant="outline" className="bg-red-50 text-red-700 border-red-200 hover:bg-red-50">Reprovado</Badge>;
-      default: return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-50">Pendente</Badge>;
+      case 'approved': return <Badge variant="default" className="bg-emerald-600 hover:bg-emerald-700 border-none shadow-sm">Aprovado</Badge>;
+      case 'rejected': return <Badge variant="destructive" className="bg-red-600 hover:bg-red-700 border-none shadow-sm">Reprovado</Badge>;
+      default: return <Badge variant="secondary" className="bg-amber-100 text-amber-800 hover:bg-amber-200 border-none shadow-sm">Pendente</Badge>;
     }
   };
 
@@ -378,60 +392,26 @@ const UserDashboard: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Nome</Label>
-                    <Input 
-                      id="name" 
-                      value={formData.name} 
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })} 
-                      required 
-                      placeholder="Nome completo" 
-                      disabled={!!editingClient} 
-                    />
+                    <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required placeholder="Nome completo" disabled={!!editingClient} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="cpf">CPF</Label>
-                    <Input 
-                      id="cpf" 
-                      value={formData.cpf} 
-                      onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })} 
-                      required 
-                      placeholder="000.000.000-00" 
-                      maxLength={14} 
-                      disabled={!!editingClient} 
-                    />
+                    <Input id="cpf" value={formData.cpf} onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })} required placeholder="000.000.000-00" maxLength={14} disabled={!!editingClient} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
-                    <Input 
-                      id="email" 
-                      type="email" 
-                      value={formData.email} 
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
-                      placeholder="email@exemplo.com" 
-                      disabled={!!editingClient} 
-                    />
+                    <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="email@exemplo.com" disabled={!!editingClient} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="phone">Telefone</Label>
-                    <Input 
-                      id="phone" 
-                      value={formData.phone} 
-                      onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })} 
-                      placeholder="(00) 00000-0000" 
-                      maxLength={15} 
-                      disabled={!!editingClient} 
-                    />
+                    <Input id="phone" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })} placeholder="(00) 00000-0000" maxLength={15} disabled={!!editingClient} />
                   </div>
                 </div>
 
-                {/* Status: Se já finalizado (aprovado/reprovado), fica desabilitado */}
                 {editingClient && (
                   <div className="space-y-2 bg-muted/50 p-4 rounded-lg border border-border shadow-sm">
                     <Label htmlFor="status" className="flex items-center gap-2 font-semibold">Status</Label>
-                    <Select 
-                      value={formData.status} 
-                      onValueChange={(value: any) => setFormData({ ...formData, status: value })}
-                      disabled={isFinalized} // <--- BLOQUEIO AQUI
-                    >
+                    <Select value={formData.status} onValueChange={(value: any) => setFormData({ ...formData, status: value })} disabled={isFinalized}>
                       <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="pending">Pendente</SelectItem>
@@ -444,21 +424,13 @@ const UserDashboard: React.FC = () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="observations">Observações</Label>
-                  <Textarea 
-                    id="observations" 
-                    value={formData.observations} 
-                    onChange={(e) => setFormData({ ...formData, observations: e.target.value })} 
-                    placeholder="Informações adicionais..."
-                    // Sempre habilitado
-                  />
+                  <Textarea id="observations" value={formData.observations} onChange={(e) => setFormData({ ...formData, observations: e.target.value })} placeholder="Informações adicionais..." />
                 </div>
 
                 <div className="space-y-2">
                   <Label>Anexo (Máx. 20MB)</Label>
                   <div className="border border-dashed rounded-lg p-4 bg-muted/20 hover:bg-muted/40 transition-colors">
                     <div className="flex flex-col items-center gap-3">
-                      
-                      {/* Anexo sempre editável, mesmo se finalizado */}
                       {!filePreview ? (
                         <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} className="w-full">
                             <Upload className="w-4 h-4 mr-2" /> Anexar Arquivo
@@ -475,7 +447,6 @@ const UserDashboard: React.FC = () => {
                               <img src={filePreview} alt="Preview" className="w-full h-full object-contain" />
                             )}
                           </div>
-                          
                           <div className="flex items-center justify-between mt-2">
                             <span className="text-xs text-emerald-600 font-medium flex items-center">
                               {isPdf(filePreview) ? <FileText className="w-3 h-3 mr-1" /> : <ImageIcon className="w-3 h-3 mr-1" />} Arquivo anexado
@@ -484,7 +455,6 @@ const UserDashboard: React.FC = () => {
                           </div>
                         </div>
                       )}
-                      
                       <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleFileUpload} />
                     </div>
                   </div>
@@ -498,13 +468,172 @@ const UserDashboard: React.FC = () => {
             </DialogContent>
           </Dialog>
 
-          {/* --- VISUALIZADOR DE ARQUIVOS --- */}
+          {/* --- DIALOG DE DETALHES (OLHO) - MODAL MAIOR (max-w-4xl) --- */}
+          <Dialog open={!!viewingClientDetails} onOpenChange={() => setViewingClientDetails(null)}>
+            <DialogContent className="max-w-4xl p-0 gap-0 overflow-hidden bg-background border border-border shadow-2xl rounded-2xl [&>button]:hidden">
+              
+              {viewingClientDetails && (
+                <div className="flex flex-col h-full">
+                    
+                    {/* CABEÇALHO HERO */}
+                    <div className="relative bg-zinc-50/80 dark:bg-zinc-900/50 p-6 border-b border-border/60">
+                         
+                         {/* BOTÃO FECHAR CUSTOMIZADO */}
+                         <div className="absolute top-4 right-4 z-50">
+                            <Button 
+                                variant="ghost" 
+                                size="icon" 
+                                onClick={() => setViewingClientDetails(null)} 
+                                className="rounded-full bg-zinc-200/50 hover:bg-red-500 hover:text-white transition-all shadow-sm w-9 h-9"
+                                title="Fechar Detalhes"
+                            >
+                                <X className="w-5 h-5" />
+                            </Button>
+                         </div>
+
+                         {/* Status Posicionado */}
+                         <div className="absolute top-5 right-16">
+                            {getStatusBadge(viewingClientDetails.status)}
+                         </div>
+
+                         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+                            <div className="text-center sm:text-left space-y-1 mt-1">
+                                <h2 className="text-2xl font-bold tracking-tight text-foreground">{viewingClientDetails.name}</h2>
+                                <p className="text-sm text-muted-foreground flex items-center justify-center sm:justify-start gap-1">
+                                    <span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-xs">ID: {viewingClientDetails.id}</span>
+                                </p>
+                            </div>
+                         </div>
+                    </div>
+
+                    <div className="p-6 space-y-8">
+                        
+                        {/* SEÇÃO 1: CARDS DE CONTATO (3 COLUNAS - LARGURA DO MODAL AUMENTADA) */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div 
+                                className="group relative p-3 rounded-xl border bg-card hover:bg-zinc-50/80 transition-all cursor-pointer shadow-sm hover:shadow-md hover:border-zinc-300"
+                                onClick={() => copyToClipboard(viewingClientDetails.email, 'Email')}
+                            >
+                                <div className="flex items-center gap-2 mb-1.5 text-muted-foreground group-hover:text-primary transition-colors">
+                                    <Mail className="w-4 h-4" /> <span className="text-xs font-medium uppercase tracking-wider">Email</span>
+                                </div>
+                                <p className="text-sm font-semibold text-foreground break-all">{viewingClientDetails.email || '-'}</p>
+                                <Copy className="w-3 h-3 absolute top-3 right-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                            </div>
+
+                            <div 
+                                className="group relative p-3 rounded-xl border bg-card hover:bg-zinc-50/80 transition-all cursor-pointer shadow-sm hover:shadow-md hover:border-zinc-300"
+                                onClick={() => copyToClipboard(viewingClientDetails.phone, 'Telefone')}
+                            >
+                                <div className="flex items-center gap-2 mb-1.5 text-muted-foreground group-hover:text-primary transition-colors">
+                                    <Phone className="w-4 h-4" /> <span className="text-xs font-medium uppercase tracking-wider">Telefone</span>
+                                </div>
+                                <p className="text-sm font-semibold truncate text-foreground">{viewingClientDetails.phone || '-'}</p>
+                                <Copy className="w-3 h-3 absolute top-3 right-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                            </div>
+
+                            <div 
+                                className="group relative p-3 rounded-xl border bg-card hover:bg-zinc-50/80 transition-all cursor-pointer shadow-sm hover:shadow-md hover:border-zinc-300"
+                                onClick={() => copyToClipboard(viewingClientDetails.cpf, 'CPF')}
+                            >
+                                <div className="flex items-center gap-2 mb-1.5 text-muted-foreground group-hover:text-primary transition-colors">
+                                    <Hash className="w-4 h-4" /> <span className="text-xs font-medium uppercase tracking-wider">CPF</span>
+                                </div>
+                                <p className="text-sm font-semibold truncate text-foreground">{viewingClientDetails.cpf}</p>
+                                <Copy className="w-3 h-3 absolute top-3 right-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                            </div>
+                        </div>
+
+                        {/* SEÇÃO 2: TIMELINE VISUAL E OBSERVAÇÕES */}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            
+                            {/* Coluna Esquerda: Timeline */}
+                            <div className="md:col-span-1 border-l-2 border-zinc-100 pl-4 space-y-6 ml-2">
+                                <div className="relative">
+                                    <div className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full bg-zinc-300 border-2 border-background ring-1 ring-zinc-100" />
+                                    <p className="text-xs text-muted-foreground mb-0.5">Criado em</p>
+                                    <p className="text-sm font-medium">{format(new Date(viewingClientDetails.createdAt), "dd/MM/yyyy")}</p>
+                                    <p className="text-xs text-muted-foreground">{format(new Date(viewingClientDetails.createdAt), "HH:mm")}</p>
+                                </div>
+                                <div className="relative">
+                                    <div className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full bg-primary border-2 border-background ring-1 ring-primary/20" />
+                                    <p className="text-xs text-muted-foreground mb-0.5">Última Edição</p>
+                                    <p className="text-sm font-medium">{format(new Date(viewingClientDetails.updatedAt), "dd/MM/yyyy")}</p>
+                                    <p className="text-xs text-muted-foreground">{format(new Date(viewingClientDetails.updatedAt), "HH:mm")}</p>
+                                </div>
+                            </div>
+
+                            {/* Coluna Direita: Observações */}
+                            <div className="md:col-span-2 space-y-2">
+                                <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                    <FileCheck className="w-3.5 h-3.5" /> Observações Internas
+                                </Label>
+                                <div className="bg-zinc-50/50 p-4 rounded-xl border border-dashed border-zinc-200 text-sm text-foreground/80 min-h-[100px] leading-relaxed">
+                                    {viewingClientDetails.observations || <span className="text-muted-foreground/50 italic">Sem observações registradas.</span>}
+                                </div>
+                            </div>
+
+                        </div>
+
+                        {/* SEÇÃO 3: ANEXO DESTAQUE */}
+                        <div className="space-y-2">
+                             <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                <ImageIcon className="w-3.5 h-3.5" /> Documento Vinculado
+                            </Label>
+                            
+                            {viewingClientDetails.imageUrl ? (
+                                <div 
+                                    className="group relative w-full h-24 bg-zinc-50 rounded-xl border overflow-hidden cursor-pointer hover:border-zinc-400 transition-all"
+                                    onClick={() => setViewingFile(viewingClientDetails.imageUrl!)}
+                                >
+                                    {/* Background com Blur se for imagem */}
+                                    {!isPdf(viewingClientDetails.imageUrl) && (
+                                        <div 
+                                            className="absolute inset-0 bg-cover bg-center opacity-20 blur-sm group-hover:scale-105 transition-transform duration-500"
+                                            style={{ backgroundImage: `url(${viewingClientDetails.imageUrl})` }}
+                                        />
+                                    )}
+                                    
+                                    <div className="absolute inset-0 flex items-center justify-between px-6 z-10">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-12 h-12 bg-white rounded-lg shadow-sm flex items-center justify-center text-zinc-400">
+                                                {isPdf(viewingClientDetails.imageUrl) ? <FileText className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}
+                                            </div>
+                                            <div>
+                                                <p className="font-semibold text-sm">Visualizar Anexo</p>
+                                                <p className="text-xs text-muted-foreground">Clique para expandir</p>
+                                            </div>
+                                        </div>
+                                        <Button variant="ghost" size="icon" className="rounded-full bg-white/50 hover:bg-white shadow-sm">
+                                            <ExternalLink className="w-4 h-4" />
+                                        </Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="w-full h-16 border border-dashed rounded-xl flex items-center justify-center text-xs text-muted-foreground bg-zinc-50/50">
+                                    Nenhum documento anexado.
+                                </div>
+                            )}
+                        </div>
+
+                    </div>
+                    
+                    {/* FOOTER */}
+                    <div className="p-4 bg-zinc-50/50 border-t flex justify-end">
+                        <Button variant="outline" onClick={() => setViewingClientDetails(null)} className="rounded-lg px-6">Fechar Ficha</Button>
+                    </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {/* --- VISUALIZADOR DE ARQUIVOS (VERDE ESCURO + BLUR) --- */}
           <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
-            <DialogContent className="fixed !left-0 !top-0 !translate-x-0 !translate-y-0 w-screen h-screen max-w-none p-0 bg-transparent border-none shadow-none focus:outline-none [&>button]:hidden flex items-center justify-center pointer-events-none">
+            <DialogContent className="fixed !left-0 !top-0 !translate-x-0 !translate-y-0 w-screen h-screen max-w-none p-0 bg-emerald-950/90 backdrop-blur-md border-none shadow-none focus:outline-none [&>button]:hidden flex items-center justify-center pointer-events-none z-[100]">
                <DialogTitle className="sr-only">Visualização do Anexo</DialogTitle>
                <div className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto">
                  {/* Toolbar */}
-                 <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[60] flex items-center gap-2 p-2 bg-black/80 backdrop-blur-md rounded-full shadow-2xl border border-white/10">
+                 <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-2 p-2 bg-black/80 backdrop-blur-md rounded-full shadow-2xl border border-white/10">
                    {!isPdf(viewingFile || '') && (
                      <>
                        <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.max(0.5, s - 0.25))} title="Diminuir Zoom">
@@ -629,7 +758,7 @@ const UserDashboard: React.FC = () => {
                       <TableHead>CPF</TableHead>
                       <TableHead>Telefone</TableHead>
                       <TableHead>Status</TableHead>
-                      <TableHead className="text-center w-[120px]">Ações</TableHead>
+                      <TableHead className="text-center w-[140px]">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -647,11 +776,17 @@ const UserDashboard: React.FC = () => {
                           <TableCell className="text-xs text-muted-foreground font-medium">{client.phone || '-'}</TableCell>
                           <TableCell>{getStatusBadge(client.status)}</TableCell>
                           <TableCell className="text-center">
-                            <div className="flex items-center justify-center gap-2">
-                              {client.imageUrl && (
-                                <Button variant="outline" size="icon" onClick={() => setViewingFile(client.imageUrl!)} className="border-zinc-200 text-[#111] hover:bg-emerald-50 hover:text-emerald-600 hover:border-emerald-200 shadow-sm transition-all h-7 w-7"><Eye className="w-3.5 h-3.5" /></Button>
-                              )}
-                              <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(client)} className="text-[#111] hover:text-amber-600 hover:bg-amber-50 h-7 w-7"><Edit className="w-3.5 h-3.5" /></Button>
+                            <div className="flex items-center justify-center gap-1">
+                              
+                              {/* BOTÃO OLHO (DETALHES) */}
+                              <Button variant="ghost" size="icon" onClick={() => setViewingClientDetails(client)} className="text-foreground hover:text-primary hover:bg-primary/10 h-8 w-8" title="Ver Detalhes">
+                                <Eye className="w-4 h-4" />
+                              </Button>
+
+                              {/* BOTÃO EDITAR */}
+                              <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(client)} className="text-muted-foreground hover:text-amber-600 hover:bg-amber-50 h-8 w-8" title="Editar">
+                                <Edit className="w-4 h-4" />
+                              </Button>
                             </div>
                           </TableCell>
                         </TableRow>
