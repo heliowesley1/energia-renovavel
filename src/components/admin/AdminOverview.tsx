@@ -1,3 +1,10 @@
+/**
+ * ARQUIVO: src/components/admin/AdminOverview.tsx
+ * * ATUALIZAÇÕES:
+ * 1. Números dos cards principais agora são PRETOS (text-black).
+ * 2. Card de "Destaque" (Supervisor) alterado de Roxo para AMARELO (Amber).
+ */
+
 import React, { useState, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -185,9 +192,6 @@ const AdminOverview: React.FC = () => {
               
               <div className="flex flex-wrap items-center justify-end gap-3 w-full xl:w-auto">
                 
-                {/* REGRA: Se for Supervisor, o campo de Setor é Ocultado (Hidden) 
-                    Se for Admin, ele aparece normalmente.
-                */}
                 {!isSupervisor && (
                   <div className="w-full sm:w-[150px]">
                     <Select 
@@ -296,7 +300,8 @@ const AdminOverview: React.FC = () => {
               <Users className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-blue-700">{total}</div>
+              {/* ALTERADO: Cor do texto para PRETO */}
+              <div className="text-3xl font-bold text-black">{total}</div>
               <p className="text-xs text-muted-foreground">Clientes encontrados</p>
             </CardContent>
           </Card>
@@ -308,7 +313,8 @@ const AdminOverview: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="flex justify-between items-end">
-                <div className="text-3xl font-bold text-emerald-600">{approved}</div>
+                {/* ALTERADO: Cor do texto para PRETO */}
+                <div className="text-3xl font-bold text-black">{approved}</div>
                 <div className="text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-1 rounded">
                   {approvedPerc.toFixed(1)}%
                 </div>
@@ -324,7 +330,8 @@ const AdminOverview: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="flex justify-between items-end">
-                <div className="text-3xl font-bold text-orange-600">{pending}</div>
+                {/* ALTERADO: Cor do texto para PRETO */}
+                <div className="text-3xl font-bold text-black">{pending}</div>
                 <div className="text-xs font-medium bg-orange-100 text-orange-700 px-2 py-1 rounded">
                   {pendingPerc.toFixed(1)}%
                 </div>
@@ -340,7 +347,8 @@ const AdminOverview: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="flex justify-between items-end">
-                <div className="text-3xl font-bold text-red-600">{rejected}</div>
+                {/* ALTERADO: Cor do texto para PRETO */}
+                <div className="text-3xl font-bold text-black">{rejected}</div>
                 <div className="text-xs font-medium bg-red-100 text-red-700 px-2 py-1 rounded">
                   {rejectedPerc.toFixed(1)}%
                 </div>
@@ -350,14 +358,15 @@ const AdminOverview: React.FC = () => {
           </Card>
         </div>
 
-        {/* --- CARDS SECUNDÁRIOS (LINHA INOVADA PARA SUPERVISOR) --- */}
+        {/* --- CARDS SECUNDÁRIOS --- */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
            
            {/* Card 1: Varia conforme o cargo */}
            {isSupervisor ? (
-             <Card className="shadow-sm border-l-4 border-l-violet-500 bg-violet-50/10">
+             // ALTERADO: Card "Destaque" agora é AMARELO (Amber) em vez de Roxo (Violet)
+             <Card className="shadow-sm border-l-4 border-l-amber-500 bg-amber-50/10">
                 <CardHeader className="pb-2">
-                  <CardTitle className="text-xs uppercase text-violet-600 font-semibold tracking-wider flex items-center gap-2">
+                  <CardTitle className="text-xs uppercase text-amber-600 font-semibold tracking-wider flex items-center gap-2">
                     <Trophy className="w-3 h-3" /> Destaque
                   </CardTitle>
                 </CardHeader>

@@ -1,9 +1,14 @@
 /**
  * ARQUIVO: src/components/admin/UserManagement.tsx
  * * ATUALIZAÇÕES:
- * 1. Layout: Implementado Accordion para agrupar por "Administradores" e por "Setores".
- * 2. Filtro: Busca por texto agora aceita "Administrador" e "Consultor".
- * 3. Form: Retirados asteriscos visuais e validação obrigatória de setor.
+ * 1. Adicionado cargo "Supervisor" no cadastro.
+ * 2. Removida a opção de excluir (Lixeira).
+ * 3. Lupa Geral: Busca apenas por Nome.
+ * 4. Novos Filtros Gerais: Botões para Setor e Cargo.
+ * 5. Inovação: Cada Setor (Accordion) tem sua própria busca interna (Lupa expansível).
+ * 6. "Sem Setor Definido" REMOVIDO.
+ * 7. "Bloqueados" renomeado para "Inativos" (Cor Amarela).
+ * 8. Ação renomeada para "Inativar Acesso".
  */
 
 import React, { useState } from 'react';
@@ -49,13 +54,17 @@ import {
   UserCog, 
   Plus, 
   Edit, 
-  Trash2, 
   Shield, 
   KeyRound,
   Power,
   Ban,
   Briefcase,
-  Users
+  Search,
+  Filter,
+  X,
+  UserCheck,
+  Building2,
+  ChevronDown
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -64,17 +73,22 @@ const UserManagement: React.FC = () => {
   const { toast } = useToast();
   const [users, setUsers] = useState<User[]>(mockUsers);
   
-  // Filtros
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  // --- FILTROS GERAIS ---
+  const [globalNameSearch, setGlobalNameSearch] = useState('');
+  const [globalSectorFilter, setGlobalSectorFilter] = useState('all');
+  const [globalRoleFilter, setGlobalRoleFilter] = useState('all');
 
-  // Dialog
+  // --- BUSCA LOCAL POR SETOR (Estado Independente) ---
+  const [sectorSearchOpen, setSectorSearchOpen] = useState<Record<string, boolean>>({});
+  const [sectorSearchTerms, setSectorSearchTerms] = useState<Record<string, string>>({});
+
+  // Dialog & Form
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    role: 'user' as 'admin' | 'user',
+    role: 'user' as 'admin' | 'user' | 'supervisor',
     sectorId: '',
     password: '', 
   });
@@ -103,8 +117,6 @@ const UserManagement: React.FC = () => {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // REMOVIDO: Validação de setor obrigatório conforme solicitado
-
     if (editingUser) {
       setUsers((prev) =>
         prev.map((u) =>
@@ -117,7 +129,7 @@ const UserManagement: React.FC = () => {
             : u
         )
       );
-      toast({ title: 'Usuário atualizado!' });
+      toast({ title: 'Usuário atualizado com sucesso!' });
     } else {
       const newUser: User = {
         id: String(Date.now()),
@@ -129,16 +141,11 @@ const UserManagement: React.FC = () => {
         active: true,
       };
       setUsers((prev) => [...prev, newUser]);
-      toast({ title: 'Usuário criado!' });
+      toast({ title: 'Novo colaborador criado!' });
     }
 
     setIsDialogOpen(false);
     resetForm();
-  };
-
-  const handleDelete = (id: string) => {
-    setUsers((prev) => prev.filter((u) => u.id !== id));
-    toast({ title: 'Usuário excluído permanentemente' });
   };
 
   const handleToggleStatus = (user: User) => {
@@ -147,91 +154,125 @@ const UserManagement: React.FC = () => {
       prev.map((u) => u.id === user.id ? { ...u, active: newStatus } : u)
     );
     toast({
-      title: newStatus ? 'Usuário Ativado' : 'Usuário Inativado',
-      description: `O acesso de ${user.name} foi ${newStatus ? 'liberado' : 'bloqueado'}.`,
-      variant: newStatus ? 'default' : 'destructive',
+      title: newStatus ? 'Acesso Liberado' : 'Acesso Inativado',
+      description: `O usuário ${user.name} foi ${newStatus ? 'ativado' : 'inativado'}.`,
+      // Se inativou (newStatus false), usa cor amarela/laranja no toast para combinar
+      className: !newStatus ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-emerald-50 border-emerald-200 text-emerald-800",
     });
   };
 
-  const getSectorName = (sectorId?: string) => {
-    if (!sectorId) return '-';
-    return mockSectors.find((s) => s.id === sectorId)?.name || 'N/A';
+  // --- LÓGICA DE FILTRAGEM GLOBAL ---
+  const getFilteredUsers = () => {
+    return users.filter((user) => {
+      // 1. Filtro por Nome (Lupa Geral)
+      const matchName = user.name.toLowerCase().includes(globalNameSearch.toLowerCase());
+      
+      // 2. Filtro por Setor (Select Geral)
+      const matchSector = globalSectorFilter === 'all' 
+        ? true 
+        : globalSectorFilter === 'no-sector' ? !user.sectorId 
+        : user.sectorId === globalSectorFilter;
+
+      // 3. Filtro por Tipo (Select Geral)
+      const matchRole = globalRoleFilter === 'all' 
+        ? true 
+        : user.role === globalRoleFilter;
+
+      return matchName && matchSector && matchRole;
+    });
   };
 
-  // --- Lógica de Filtragem Aprimorada ---
-  const filteredUsers = users.filter((user) => {
-    const term = searchTerm.toLowerCase();
-    
-    // Busca por Nome, Email E pelos termos de cargo
-    const matchesSearch = 
-      user.name.toLowerCase().includes(term) || 
-      user.email.toLowerCase().includes(term) ||
-      (term.includes('admin') && user.role === 'admin') ||
-      (term.includes('consult') && user.role === 'user'); // "Consult" pega Consultor/Consultores
+  // Dados filtrados globalmente
+  const globalFilteredUsers = getFilteredUsers();
+  
+  // Stats baseados no filtro atual
+  const activeCount = globalFilteredUsers.filter(u => u.active).length;
+  const inactiveCount = globalFilteredUsers.filter(u => !u.active).length;
 
-    const matchesStatus = statusFilter === 'all' 
-      ? true 
-      : statusFilter === 'active' ? user.active 
-      : !user.active;
-    
-    return matchesSearch && matchesStatus;
-  });
-
-  const activeCount = users.filter(u => u.active).length;
-  const inactiveCount = users.filter(u => !u.active).length;
-
-  // --- Renderização da Tabela (Helper para evitar repetição) ---
-  const renderUserTable = (usersList: User[]) => {
-    if (usersList.length === 0) {
-      return <div className="text-center py-4 text-muted-foreground text-sm">Nenhum usuário neste grupo.</div>;
+  // --- MANIPULAÇÃO DA BUSCA INTERNA DO SETOR ---
+  const toggleSectorSearch = (sectorId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSectorSearchOpen(prev => ({
+        ...prev,
+        [sectorId]: !prev[sectorId]
+    }));
+    if (sectorSearchOpen[sectorId]) {
+        setSectorSearchTerms(prev => ({ ...prev, [sectorId]: '' }));
     }
+  };
+
+  // --- RENDERIZAÇÃO DA TABELA ---
+  const renderUserTable = (usersList: User[], localSearchTerm: string = '') => {
+    const displayUsers = usersList.filter(u => 
+        u.name.toLowerCase().includes(localSearchTerm.toLowerCase()) ||
+        u.email.toLowerCase().includes(localSearchTerm.toLowerCase())
+    );
+
+    if (displayUsers.length === 0) {
+      return (
+        <div className="flex flex-col items-center justify-center py-8 text-muted-foreground bg-muted/20 rounded-md border border-dashed">
+            <p className="text-sm">Nenhum usuário encontrado neste grupo.</p>
+        </div>
+      );
+    }
+
     return (
-      <div className="rounded-md border bg-background/50">
+      <div className="rounded-md border bg-background/50 overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow>
-              <TableHead>Usuário</TableHead>
+            <TableRow className="hover:bg-transparent bg-muted/40">
+              <TableHead>Colaborador</TableHead>
+              <TableHead>Cargo</TableHead>
               <TableHead>Status</TableHead>
-              <TableHead>Email</TableHead>
               <TableHead className="text-right">Ações</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {usersList.map((user) => (
-              <TableRow key={user.id} className={cn(!user.active && "opacity-60 bg-muted/50")}>
-                <TableCell className="font-medium">{user.name}</TableCell>
+            {displayUsers.map((user) => (
+              <TableRow key={user.id} className={cn("transition-colors", !user.active && "opacity-60 bg-muted/30")}>
                 <TableCell>
-                  <Badge variant={user.active ? "success" : "secondary"} className={cn("h-5 text-[10px]", !user.active && "bg-muted-foreground text-white")}>
-                    {user.active ? 'Ativo' : 'Inativo'}
-                  </Badge>
+                    <div className="flex flex-col">
+                        <span className="font-medium">{user.name}</span>
+                        <span className="text-xs text-muted-foreground">{user.email}</span>
+                    </div>
                 </TableCell>
-                <TableCell className="text-muted-foreground text-sm">{user.email}</TableCell>
+                <TableCell>
+                    <Badge variant="outline" className={cn(
+                        "text-[10px] uppercase tracking-wide border-0 font-bold",
+                        user.role === 'admin' ? "bg-primary/10 text-primary" : 
+                        user.role === 'supervisor' ? "bg-violet-100 text-violet-700" : 
+                        "bg-slate-100 text-slate-700"
+                    )}>
+                        {user.role === 'admin' ? 'Administrador' : user.role === 'supervisor' ? 'Supervisor' : 'Consultor'}
+                    </Badge>
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center gap-2">
+                      {/* ALTERAÇÃO: Bolinha de status inativo agora é AMBER (amarelo/laranja) */}
+                      <div className={cn("w-2 h-2 rounded-full", user.active ? "bg-emerald-500" : "bg-amber-500 animate-pulse")} />
+                      <span className="text-xs font-medium text-muted-foreground">{user.active ? 'Ativo' : 'Inativo'}</span>
+                  </div>
+                </TableCell>
                 <TableCell className="text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => handleToggleStatus(user)}
-                      title={user.active ? "Inativar" : "Ativar"}
-                      className={cn("h-7 w-7", user.active ? "text-destructive hover:bg-destructive/10" : "text-success hover:bg-success/10")}
+                      /* ALTERAÇÃO: Texto do tooltip modificado */
+                      title={user.active ? "Inativar Acesso" : "Liberar Acesso"}
+                      /* ALTERAÇÃO: Hover agora é AMBER/AMARELO para inativar */
+                      className={cn("h-8 w-8 rounded-full", user.active ? "text-muted-foreground hover:text-amber-600 hover:bg-amber-50" : "text-emerald-600 hover:bg-emerald-50")}
                     >
-                      <Power className="w-3.5 h-3.5" />
+                      {user.active ? <Ban className="w-4 h-4" /> : <Power className="w-4 h-4" />}
                     </Button>
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => handleOpenDialog(user)}
-                      className="h-7 w-7"
+                      className="h-8 w-8 rounded-full text-muted-foreground hover:text-primary hover:bg-primary/10"
                     >
-                      <Edit className="w-3.5 h-3.5" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-7 w-7 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleDelete(user.id)}
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Edit className="w-4 h-4" />
                     </Button>
                   </div>
                 </TableCell>
@@ -245,62 +286,64 @@ const UserManagement: React.FC = () => {
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 animate-fade-in">
+      <div className="space-y-6 animate-fade-in pb-10">
+        
+        {/* Header & Ação Principal */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">
               Gestão de Usuários
             </h1>
             <p className="text-muted-foreground mt-1">
-              Controle de acesso hierárquico por setor
+              Administre hierarquias, supervisores e consultores.
             </p>
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="hero" onClick={() => handleOpenDialog()}>
-                <Plus className="w-4 h-4" />
+              <Button variant="hero" onClick={() => handleOpenDialog()} className="shadow-lg h-10">
+                <Plus className="w-4 h-4 mr-2" />
                 Novo Usuário
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
-                <DialogTitle>{editingUser ? 'Editar Usuário' : 'Novo Usuário'}</DialogTitle>
+                <DialogTitle>{editingUser ? 'Editar Acesso' : 'Criar Novo Acesso'}</DialogTitle>
                 <DialogDescription>
-                  Preencha os dados de acesso. O setor não é obrigatório.
+                  Configure as permissões e dados de acesso do colaborador.
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
                 <div className="space-y-2">
-                  {/* Removido asterisco visual */}
-                  <Label htmlFor="name">Nome</Label>
-                  <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required />
+                  <Label htmlFor="name">Nome Completo</Label>
+                  <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required placeholder="Ex: Ana Silva" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required />
+                  <Label htmlFor="email">Email Corporativo</Label>
+                  <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} required placeholder="nome@empresa.com" />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="password">{editingUser ? 'Nova Senha' : 'Senha'}</Label>
+                  <Label htmlFor="password">{editingUser ? 'Nova Senha (Opcional)' : 'Senha Inicial'}</Label>
                   <div className="relative">
                     <KeyRound className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
-                    <Input id="password" type="password" className="pl-9" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} required={!editingUser} />
+                    <Input id="password" type="password" className="pl-9" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} required={!editingUser} placeholder={editingUser ? "Manter atual" : "******"} />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="role">Tipo</Label>
+                    <Label htmlFor="role">Função</Label>
                     <Select value={formData.role} onValueChange={(v: any) => setFormData({ ...formData, role: v })}>
                       <SelectTrigger><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="admin">Administrador</SelectItem>
+                        <SelectItem value="supervisor">Supervisor</SelectItem>
                         <SelectItem value="user">Consultor</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="sector">Setor (Opcional)</Label>
+                    <Label htmlFor="sector">Setor Vinculado</Label>
                     <Select value={formData.sectorId} onValueChange={(v) => setFormData({ ...formData, sectorId: v })}>
-                      <SelectTrigger><SelectValue placeholder="Selecione" /></SelectTrigger>
+                      <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
                       <SelectContent>
                         {mockSectors.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
                       </SelectContent>
@@ -309,7 +352,7 @@ const UserManagement: React.FC = () => {
                 </div>
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                  <Button type="submit" variant="hero">Salvar</Button>
+                  <Button type="submit" variant="hero">Salvar Dados</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -318,125 +361,181 @@ const UserManagement: React.FC = () => {
 
         {/* Stats Rápidos */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <Card className="glass-card p-4 flex items-center justify-between">
+          <Card className="glass-card p-4 flex items-center justify-between border-l-4 border-l-primary">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-primary/10 rounded-lg"><UserCog className="w-5 h-5 text-primary"/></div>
-              <span className="text-sm font-medium">Total</span>
+              <span className="text-sm font-medium">Total Usuários</span>
             </div>
-            <span className="text-2xl font-bold">{users.length}</span>
+            <span className="text-2xl font-bold">{globalFilteredUsers.length}</span>
           </Card>
-          <Card className="glass-card p-4 flex items-center justify-between">
+          <Card className="glass-card p-4 flex items-center justify-between border-l-4 border-l-emerald-500">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-emerald-100 rounded-lg"><Shield className="w-5 h-5 text-emerald-600"/></div>
+              <div className="p-2 bg-emerald-100 rounded-lg"><UserCheck className="w-5 h-5 text-emerald-600"/></div>
               <span className="text-sm font-medium">Ativos</span>
             </div>
             <span className="text-2xl font-bold text-emerald-600">{activeCount}</span>
           </Card>
-          <Card className="glass-card p-4 flex items-center justify-between">
+          
+          {/* ALTERAÇÃO: CARD "BLOQUEADOS" AGORA É "INATIVOS" (AMARELO) */}
+          <Card className="glass-card p-4 flex items-center justify-between border-l-4 border-l-amber-500">
             <div className="flex items-center gap-3">
-              <div className="p-2 bg-red-100 rounded-lg"><Ban className="w-5 h-5 text-red-600"/></div>
+              <div className="p-2 bg-amber-100 rounded-lg"><Ban className="w-5 h-5 text-amber-600"/></div>
               <span className="text-sm font-medium">Inativos</span>
             </div>
-            <span className="text-2xl font-bold text-red-600">{inactiveCount}</span>
+            <span className="text-2xl font-bold text-amber-600">{inactiveCount}</span>
           </Card>
         </div>
 
-        <Card className="glass-card">
-          <CardHeader>
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <CardTitle className="text-xl">Organograma</CardTitle>
+        {/* ÁREA DE FILTROS GERAIS */}
+        <Card className="border shadow-sm">
+          <CardHeader className="pb-3">
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Filter className="w-5 h-5 text-muted-foreground" /> Filtros Gerais
+              </CardTitle>
               
-              {/* Filtros */}
-              <div className="flex flex-wrap gap-2">
-                <div className="relative w-full sm:w-[250px]">
+              <div className="flex flex-col sm:flex-row gap-3 w-full md:w-auto">
+                <div className="relative w-full sm:w-[280px]">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                   <Input 
-                    placeholder="Buscar (Nome, Email, 'Admin', 'Consultor')..." 
-                    value={searchTerm} 
-                    onChange={(e) => setSearchTerm(e.target.value)} 
-                    className="pl-8"
+                    placeholder="Buscar apenas por nome..." 
+                    value={globalNameSearch} 
+                    onChange={(e) => setGlobalNameSearch(e.target.value)} 
+                    className="pl-9 h-10"
                   />
-                  <Users className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
                 </div>
-                <Select value={statusFilter} onValueChange={(v: any) => setStatusFilter(v)}>
-                  <SelectTrigger className="w-[120px]"><SelectValue placeholder="Status" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
-                    <SelectItem value="active">Ativos</SelectItem>
-                    <SelectItem value="inactive">Inativos</SelectItem>
-                  </SelectContent>
-                </Select>
+
+                <div className="w-full sm:w-[180px]">
+                    <Select value={globalSectorFilter} onValueChange={setGlobalSectorFilter}>
+                        <SelectTrigger className="h-10">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                                <Building2 className="w-4 h-4" />
+                                <span className="text-foreground truncate">
+                                    {globalSectorFilter === 'all' ? 'Todos Setores' : 
+                                     globalSectorFilter === 'no-sector' ? 'Sem Setor' : 
+                                     mockSectors.find(s => s.id === globalSectorFilter)?.name}
+                                </span>
+                            </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todos Setores</SelectItem>
+                            {mockSectors.map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
+                            <SelectItem value="no-sector">Sem Setor Definido</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+
+                <div className="w-full sm:w-[180px]">
+                    <Select value={globalRoleFilter} onValueChange={setGlobalRoleFilter}>
+                        <SelectTrigger className="h-10">
+                            <div className="flex items-center gap-2 text-muted-foreground">
+                                <Shield className="w-4 h-4" />
+                                <span className="text-foreground">
+                                    {globalRoleFilter === 'all' ? 'Todos Cargos' : 
+                                     globalRoleFilter === 'admin' ? 'Admins' : 
+                                     globalRoleFilter === 'supervisor' ? 'Supervisores' : 'Consultores'}
+                                </span>
+                            </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="all">Todos Cargos</SelectItem>
+                            <SelectItem value="admin">Administradores</SelectItem>
+                            <SelectItem value="supervisor">Supervisores</SelectItem>
+                            <SelectItem value="user">Consultores</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
               </div>
             </div>
           </CardHeader>
-          <CardContent>
+        </Card>
+
+        {/* LISTAGEM POR GRUPOS */}
+        <Card className="glass-card border-none shadow-none bg-transparent">
+          <CardContent className="p-0 space-y-6">
             
             {/* GRUPO 1: ADMINISTRADORES */}
-            <div className="mb-6">
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider flex items-center gap-2">
-                <Shield className="w-4 h-4" /> Administração
-              </h3>
-              <Accordion type="single" collapsible defaultValue="admins" className="w-full">
-                <AccordionItem value="admins" className="border-b-0">
-                  <AccordionTrigger className="hover:no-underline bg-muted/30 px-4 rounded-lg mb-2">
-                    <span className="flex items-center gap-2 font-semibold">
-                      Administradores 
-                      <Badge variant="secondary" className="ml-2">{filteredUsers.filter(u => u.role === 'admin').length}</Badge>
-                    </span>
-                  </AccordionTrigger>
-                  <AccordionContent className="pt-2 px-1">
-                    {renderUserTable(filteredUsers.filter(u => u.role === 'admin'))}
-                  </AccordionContent>
-                </AccordionItem>
-              </Accordion>
-            </div>
+            {globalFilteredUsers.some(u => u.role === 'admin') && (
+                <div className="bg-card border rounded-xl shadow-sm overflow-hidden">
+                    <div className="bg-muted/30 px-6 py-4 border-b flex items-center justify-between">
+                        <h3 className="font-bold flex items-center gap-2 text-foreground">
+                            <Shield className="w-5 h-5 text-primary" /> 
+                            Administração
+                        </h3>
+                        <Badge variant="secondary">{globalFilteredUsers.filter(u => u.role === 'admin').length}</Badge>
+                    </div>
+                    <div className="p-4">
+                        {renderUserTable(globalFilteredUsers.filter(u => u.role === 'admin'))}
+                    </div>
+                </div>
+            )}
 
-            {/* GRUPO 2: SETORES (CONSULTORES) */}
-            <div>
-              <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wider flex items-center gap-2">
+            {/* GRUPO 2: SETORES */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-bold text-muted-foreground uppercase tracking-wider pl-1 flex items-center gap-2">
                 <Briefcase className="w-4 h-4" /> Equipes por Setor
               </h3>
               
-              <Accordion type="multiple" className="w-full space-y-2">
+              <Accordion type="multiple" className="w-full space-y-3">
                 {mockSectors.map((sector) => {
-                  const sectorUsers = filteredUsers.filter(u => u.role === 'user' && u.sectorId === sector.id);
-                  // Oculta setor se não tiver usuários E se houver busca ativa (pra limpar a tela)
-                  // Se não tiver busca, mostra o setor mesmo vazio.
-                  if (searchTerm && sectorUsers.length === 0) return null;
+                  const sectorUsersGlobal = globalFilteredUsers.filter(u => u.role !== 'admin' && u.sectorId === sector.id);
+                  
+                  if (sectorUsersGlobal.length === 0) return null;
+
+                  const isSearching = sectorSearchOpen[sector.id];
+                  const localTerm = sectorSearchTerms[sector.id] || '';
 
                   return (
-                    <AccordionItem key={sector.id} value={sector.id} className="border-none">
-                      <AccordionTrigger className="hover:no-underline bg-muted/30 px-4 rounded-lg data-[state=open]:bg-muted/50 transition-colors">
-                        <span className="flex items-center gap-2 font-semibold">
-                          {sector.name}
-                          <Badge variant="outline" className="ml-2 bg-background">{sectorUsers.length}</Badge>
-                        </span>
-                      </AccordionTrigger>
-                      <AccordionContent className="pt-2 px-1">
-                        {renderUserTable(sectorUsers)}
+                    <AccordionItem key={sector.id} value={sector.id} className="bg-card border rounded-xl shadow-sm px-0">
+                      <div className="flex items-center px-4 py-3 hover:bg-muted/50 transition-colors rounded-t-xl">
+                        
+                        <AccordionTrigger className="hover:no-underline py-0 flex-1">
+                            <span className="flex items-center gap-3 font-semibold text-lg">
+                                {sector.name}
+                                <Badge variant="outline" className="text-xs font-normal bg-background">
+                                    {sectorUsersGlobal.length} membros
+                                </Badge>
+                            </span>
+                        </AccordionTrigger>
+
+                        <div className="flex items-center gap-2 ml-4">
+                            {isSearching && (
+                                <div className="animate-in fade-in slide-in-from-right-5 duration-300">
+                                    <Input 
+                                        autoFocus
+                                        className="h-8 w-[200px] text-xs bg-background"
+                                        placeholder={`Buscar em ${sector.name}...`}
+                                        value={localTerm}
+                                        onChange={(e) => setSectorSearchTerms(prev => ({ ...prev, [sector.id]: e.target.value }))}
+                                        onClick={(e) => e.stopPropagation()}
+                                    />
+                                </div>
+                            )}
+                            <Button 
+                                variant={isSearching ? "secondary" : "ghost"} 
+                                size="icon" 
+                                className="h-8 w-8 shrink-0 rounded-full"
+                                onClick={(e) => toggleSectorSearch(sector.id, e)}
+                                title="Buscar neste setor"
+                            >
+                                {isSearching ? <X className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+                            </Button>
+                        </div>
+
+                      </div>
+                      
+                      <AccordionContent className="px-4 pb-4 pt-0 border-t">
+                        <div className="pt-4">
+                            {renderUserTable(sectorUsersGlobal, localTerm)}
+                        </div>
                       </AccordionContent>
                     </AccordionItem>
                   );
                 })}
 
-                {/* GRUPO 3: SEM SETOR */}
-                {(() => {
-                  const noSectorUsers = filteredUsers.filter(u => u.role === 'user' && !u.sectorId);
-                  if (noSectorUsers.length === 0) return null;
-                  
-                  return (
-                    <AccordionItem value="no-sector" className="border-none">
-                      <AccordionTrigger className="hover:no-underline bg-orange-50/50 px-4 rounded-lg data-[state=open]:bg-orange-50 transition-colors">
-                        <span className="flex items-center gap-2 font-semibold text-orange-800">
-                          Sem Setor Definido
-                          <Badge variant="outline" className="ml-2 bg-white border-orange-200 text-orange-700">{noSectorUsers.length}</Badge>
-                        </span>
-                      </AccordionTrigger>
-                      <AccordionContent className="pt-2 px-1">
-                        {renderUserTable(noSectorUsers)}
-                      </AccordionContent>
-                    </AccordionItem>
-                  );
-                })()}
+                {/* ALTERAÇÃO: GRUPO "SEM SETOR" REMOVIDO DAQUI
+                   O bloco que renderizava usuários sem setor foi excluído conforme solicitado.
+                */}
               </Accordion>
             </div>
 

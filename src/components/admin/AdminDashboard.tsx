@@ -367,7 +367,7 @@ const AdminDashboard: React.FC = () => {
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
                 
                 {/* --- ÁREA EXCLUSIVA ADMIN: EDIÇÃO DE DATAS --- */}
-                {isAdmin && (
+                {isAdmin && editingClient &&(
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="createdAt">Data de Criação</Label>
