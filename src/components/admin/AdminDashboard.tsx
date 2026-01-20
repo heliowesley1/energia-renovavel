@@ -1,12 +1,4 @@
-/**
- * ARQUIVO: src/components/admin/AdminDashboard.tsx
- * * ATUALIZAÇÕES:
- * 1. Removida mensagem de "Bem-vindo" do cabeçalho.
- * 2. Adicionado Botão "Novo Cliente" e Modal de Cadastro.
- * 3. Formulário de cadastro inclui seleção de Setor e Funcionário (Consultor).
- */
-
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { mockClients, mockSectors, mockUsers } from '@/data/mockData';
@@ -31,7 +23,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogFooter, // Adicionado
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   Table,
@@ -42,6 +34,15 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import {
+  Pagination,
+  PaginationContent,
+  PaginationEllipsis,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+} from "@/components/ui/pagination";
+import {
   Users,
   UserCheck,
   UserX,
@@ -50,23 +51,57 @@ import {
   Search,
   Filter,
   Eye,
-  Zap,
+  X,
+  Mail,
+  Phone,
+  Hash,
+  FileCheck,
+  ImageIcon,
+  FileText,
+  ExternalLink,
+  Copy,
+  ZoomIn, 
+  ZoomOut, 
+  Download,
+  ShieldCheck,
+  Upload,
+  Edit,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 
 const AdminDashboard: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const isSupervisor = user?.role === 'supervisor';
+  const isAdmin = user?.role === 'admin';
+
   const [clients, setClients] = useState<Client[]>(mockClients);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [sectorFilter, setSectorFilter] = useState<string>('all');
+  const [sectorFilter, setSectorFilter] = useState<string>(
+    isSupervisor && user?.sectorId ? user.sectorId : 'all'
+  );
   const [userFilter, setUserFilter] = useState<string>('all');
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
+  
+  // Detalhes Modal State
+  const [viewingClientDetails, setViewingClientDetails] = useState<Client | null>(null);
+  const [viewingFile, setViewingFile] = useState<string | null>(null);
+  const [zoomScale, setZoomScale] = useState(1);
 
-  // Estados para Adicionar Cliente
-  const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
-  const [newClientData, setNewClientData] = useState({
+  // Paginação State
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Form State (Add/Edit)
+  const [isFormOpen, setIsFormOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  const [formData, setFormData] = useState({
     name: '',
     email: '',
     cpf: '',
@@ -74,148 +109,309 @@ const AdminDashboard: React.FC = () => {
     sectorId: '',
     userId: '',
     observations: '',
+    status: 'pending' as 'pending' | 'approved' | 'rejected',
+    createdAt: '',
+    updatedAt: '',
   });
 
-  // Função para formatar CPF e Telefone (Igual ao UserDashboard)
+  // Inicializa valores ao abrir modal ou trocar perfil
+  useEffect(() => {
+    if (!editingClient && isFormOpen) {
+        setFormData(prev => ({
+            ...prev,
+            sectorId: isSupervisor ? user?.sectorId || '' : prev.sectorId
+        }));
+    }
+  }, [isSupervisor, user, isFormOpen, editingClient]);
+
   const formatCPF = (value: string) => value.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})/, '$1-$2').replace(/(-\d{2})\d+?$/, '$1');
   const formatPhone = (value: string) => value.replace(/\D/g, '').replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').replace(/(-\d{4})\d+?$/, '$1');
 
-  const handleAddClient = (e: React.FormEvent) => {
-    e.preventDefault();
-    
-    // Simulação de criação
-    const newClient: Client = {
-      id: String(Date.now()),
-      ...newClientData,
-      status: 'pending',
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    };
-
-    setClients((prev) => [newClient, ...prev]);
-    toast({ title: 'Cliente cadastrado com sucesso!' });
-    setIsAddDialogOpen(false);
-    setNewClientData({ name: '', email: '', cpf: '', phone: '', sectorId: '', userId: '', observations: '' });
+  // Helper para formatar Date para input datetime-local
+  const toInputDate = (date: Date) => {
+    try {
+      return date.toISOString().slice(0, 16);
+    } catch (e) {
+      return '';
+    }
   };
 
-  // Stats
-  const totalClients = clients.length;
-  const approvedClients = clients.filter((c) => c.status === 'approved').length;
-  const pendingClients = clients.filter((c) => c.status === 'pending').length;
-  const rejectedClients = clients.filter((c) => c.status === 'rejected').length;
+  // --- ARQUIVOS ---
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const maxSize = 20 * 1024 * 1024; // 20MB
+      if (file.size > maxSize) {
+        toast({ title: "Arquivo muito grande", description: "O tamanho máximo permitido é de 20MB.", variant: "destructive" });
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+      const reader = new FileReader();
+      reader.onloadend = () => setFilePreview(reader.result as string);
+      reader.readAsDataURL(file);
+    }
+  };
 
-  // Filter clients
+  const removeFile = () => {
+    setFilePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const isPdf = (dataUrl: string) => dataUrl.startsWith('data:application/pdf') || dataUrl.endsWith('.pdf');
+
+  // --- HANDLERS DE FORMULÁRIO ---
+  const handleOpenForm = (client?: Client) => {
+    if (client) {
+        // Modo Edição
+        setEditingClient(client);
+        setFormData({
+            name: client.name,
+            email: client.email,
+            cpf: client.cpf,
+            phone: client.phone,
+            sectorId: client.sectorId,
+            userId: client.userId,
+            observations: client.observations || '',
+            status: client.status,
+            createdAt: toInputDate(new Date(client.createdAt)),
+            updatedAt: toInputDate(new Date(client.updatedAt)),
+        });
+        setFilePreview(client.imageUrl || null);
+    } else {
+        // Modo Criação
+        setEditingClient(null);
+        const now = new Date();
+        setFormData({
+            name: '',
+            email: '',
+            cpf: '',
+            phone: '',
+            sectorId: isSupervisor ? user?.sectorId || '' : '',
+            userId: '',
+            observations: '',
+            status: 'pending',
+            createdAt: toInputDate(now),
+            updatedAt: toInputDate(now),
+        });
+        setFilePreview(null);
+    }
+    setIsFormOpen(true);
+  };
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    let finalUserId = formData.userId;
+    // Supervisor: Se não selecionado, assume ele mesmo
+    if (!finalUserId && isSupervisor && user?.id) {
+        finalUserId = user.id;
+    }
+    // Admin: Se não selecionado, assume ele mesmo (Admin)
+    if (!finalUserId && isAdmin && user?.id) {
+        finalUserId = user.id;
+    }
+
+    // Validação: Só impede se não tiver ID e não for um dos casos acima
+    if (!finalUserId) {
+         toast({ title: "Erro", description: "Não foi possível definir o responsável.", variant: "destructive" });
+         return;
+    }
+
+    // Processa datas customizadas (se admin) ou usa atuais
+    const finalCreatedAt = isAdmin && formData.createdAt ? new Date(formData.createdAt) : (editingClient?.createdAt || new Date());
+    const finalUpdatedAt = isAdmin && formData.updatedAt ? new Date(formData.updatedAt) : new Date();
+
+    if (editingClient) {
+        // EDITAR
+        setClients((prev) => prev.map((c) => c.id === editingClient.id ? { 
+            ...c, 
+            ...formData,
+            userId: finalUserId,
+            imageUrl: filePreview || undefined, 
+            createdAt: finalCreatedAt,
+            updatedAt: finalUpdatedAt 
+        } : c));
+        toast({ title: 'Cliente atualizado com sucesso!' });
+    } else {
+        // CRIAR
+        const newClient: Client = {
+            id: String(Date.now()),
+            ...formData,
+            userId: finalUserId,
+            sectorId: formData.sectorId, 
+            imageUrl: filePreview || undefined,
+            createdAt: finalCreatedAt,
+            updatedAt: finalUpdatedAt,
+        };
+        setClients((prev) => [newClient, ...prev]);
+        toast({ title: 'Cliente cadastrado com sucesso!' });
+    }
+    
+    setIsFormOpen(false);
+    setFilePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const copyToClipboard = (text: string, label: string) => {
+    if(!text) return;
+    navigator.clipboard.writeText(text);
+    toast({ title: "Copiado!", description: `${label} copiado.` });
+  };
+
+  // --- FILTER LOGIC ---
   const filteredClients = clients.filter((client) => {
-    const matchesSearch =
-      client.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      client.cpf.includes(searchTerm) ||
-      client.id.includes(searchTerm);
+    if (isSupervisor && client.sectorId !== user.sectorId) return false;
+
+    let matchesSearch = true;
+    if (searchTerm) {
+      const termLower = searchTerm.toLowerCase();
+      if (termLower.startsWith('#')) {
+        const idTerm = termLower.replace('#', '').trim();
+        if (idTerm) {
+          matchesSearch = client.id.toLowerCase().includes(idTerm);
+        }
+      } else {
+        const nameMatch = client.name.toLowerCase().includes(termLower);
+        const termClean = searchTerm.replace(/\D/g, '');
+        const clientCpfClean = client.cpf.replace(/\D/g, '');
+        const cpfMatch = termClean.length > 0 && clientCpfClean.includes(termClean);
+        matchesSearch = nameMatch || cpfMatch;
+      }
+    }
+
     const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
-    const matchesSector = sectorFilter === 'all' || client.sectorId === sectorFilter;
+    const matchesSector = isSupervisor ? true : (sectorFilter === 'all' || client.sectorId === sectorFilter);
     const matchesUser = userFilter === 'all' || client.userId === userFilter;
 
     return matchesSearch && matchesStatus && matchesSector && matchesUser;
   });
 
+  // --- PAGINAÇÃO ---
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, sectorFilter, userFilter]);
+
+  const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const paginatedClients = filteredClients.slice(startIndex, startIndex + itemsPerPage);
+
+  const getPageNumbers = () => {
+    const pages = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      if (currentPage <= 3) {
+        pages.push(1, 2, 3, 4, '...', totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+      } else {
+        pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages);
+      }
+    }
+    return pages;
+  };
+
+  const statsSource = isSupervisor ? clients.filter(c => c.sectorId === user.sectorId) : clients;
+  
+  const stats = [
+    { title: 'Total', value: statsSource.length, icon: Users, color: 'text-primary', bg: 'bg-primary/10', borderClass: 'border-l-primary' },
+    { title: 'Aprovados', value: statsSource.filter((c) => c.status === 'approved').length, icon: UserCheck, color: 'text-emerald-600', bg: 'bg-emerald-100', borderClass: 'border-l-emerald-500' },
+    { title: 'Pendentes', value: statsSource.filter((c) => c.status === 'pending').length, icon: Clock, color: 'text-orange-600', bg: 'bg-orange-100', borderClass: 'border-l-orange-500' },
+    { title: 'Reprovados', value: statsSource.filter((c) => c.status === 'rejected').length, icon: UserX, color: 'text-red-600', bg: 'bg-red-100', borderClass: 'border-l-red-500' },
+  ];
+
   const getStatusBadge = (status: string) => {
     switch (status) {
-      case 'approved':
-        return <Badge variant="success">Aprovado</Badge>;
-      case 'rejected':
-        return <Badge variant="rejected">Reprovado</Badge>;
-      default:
-        return <Badge variant="pending">Pendente</Badge>;
+      case 'approved': return <Badge variant="default" className="bg-emerald-600 hover:bg-emerald-700 border-none shadow-sm">Aprovado</Badge>;
+      case 'rejected': return <Badge variant="destructive" className="bg-red-600 hover:bg-red-700 border-none shadow-sm">Reprovado</Badge>;
+      default: return <Badge variant="secondary" className="bg-amber-100 text-amber-800 hover:bg-amber-200 border-none shadow-sm">Pendente</Badge>;
     }
   };
 
-  const getSectorName = (sectorId: string) => {
-    return mockSectors.find((s) => s.id === sectorId)?.name || 'N/A';
+  const getSectorName = (id: string) => {
+    if (!id) return 'Admin';
+    return mockSectors.find(s => s.id === id)?.name || 'N/A';
   };
-
-  const getUserName = (userId: string) => {
-    return mockUsers.find((u) => u.id === userId)?.name || 'N/A';
-  };
-
-  const stats = [
-    {
-      title: 'Total de Clientes',
-      value: totalClients,
-      icon: Users,
-      color: 'text-primary',
-      bg: 'bg-primary/10',
-    },
-    {
-      title: 'Aprovados',
-      value: approvedClients,
-      icon: UserCheck,
-      color: 'text-success',
-      bg: 'bg-success/10',
-    },
-    {
-      title: 'Pendentes',
-      value: pendingClients,
-      icon: Clock,
-      color: 'text-warning',
-      bg: 'bg-warning/10',
-    },
-    {
-      title: 'Reprovados',
-      value: rejectedClients,
-      icon: UserX,
-      color: 'text-destructive',
-      bg: 'bg-destructive/10',
-    },
-  ];
+  
+  const getUserName = (id: string) => mockUsers.find(u => u.id === id)?.name || 'N/A';
 
   return (
     <DashboardLayout>
-      <div className="space-y-6 animate-fade-in">
+      <div className="space-y-6 animate-fade-in pb-10">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">
-              Dashboard Administrativo
+              {isSupervisor ? `Gestão - ${getSectorName(user.sectorId || '')}` : 'Dashboard Administrativo'}
             </h1>
             <p className="text-muted-foreground mt-1">
-              Gerencie clientes, setores e usuários do sistema
+              {isSupervisor ? 'Visualize os clientes do seu setor' : 'Gerencie clientes, setores e usuários do sistema'}
             </p>
           </div>
           
-          {/* Botão Novo Cliente (Adicionado) */}
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
             <DialogTrigger asChild>
-              <Button variant="hero" className="shadow-lg h-10">
-                <Plus className="w-4 h-4 mr-2" />
-                Novo Cliente
+              <Button variant="hero" className="shadow-lg h-10" onClick={() => handleOpenForm()}>
+                <Plus className="w-4 h-4 mr-2" /> Novo Cliente
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" onOpenAutoFocus={(e) => e.preventDefault()}>
               <DialogHeader>
-                <DialogTitle>Cadastrar Novo Cliente</DialogTitle>
+                <DialogTitle>{editingClient ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}</DialogTitle>
                 <DialogDescription>
-                  Preencha os dados abaixo. Como administrador, você pode vincular um setor e um funcionário.
+                  {editingClient 
+                    ? (isSupervisor ? "Supervisores podem alterar Status e Consultor." : "Edite os dados do cliente.") 
+                    : "Preencha os dados abaixo."}
                 </DialogDescription>
               </DialogHeader>
-              <form onSubmit={handleAddClient} className="space-y-4 mt-4">
+              <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+                
+                {/* --- ÁREA EXCLUSIVA ADMIN: EDIÇÃO DE DATAS --- */}
+                {isAdmin && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="createdAt">Data de Criação</Label>
+                      <Input 
+                        id="createdAt" 
+                        type="datetime-local"
+                        value={formData.createdAt} 
+                        onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })} 
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="updatedAt">Data de Alteração</Label>
+                      <Input 
+                        id="updatedAt" 
+                        type="datetime-local"
+                        value={formData.updatedAt} 
+                        onChange={(e) => setFormData({ ...formData, updatedAt: e.target.value })} 
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Nome *</Label>
+                    <Label htmlFor="name">Nome</Label>
                     <Input 
                       id="name" 
-                      value={newClientData.name} 
-                      onChange={(e) => setNewClientData({ ...newClientData, name: e.target.value })} 
+                      value={formData.name} 
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })} 
                       required 
+                      placeholder="Nome completo"
+                      disabled={!!editingClient && isSupervisor}
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="cpf">CPF *</Label>
+                    <Label htmlFor="cpf">CPF</Label>
                     <Input 
                       id="cpf" 
-                      value={newClientData.cpf} 
-                      onChange={(e) => setNewClientData({ ...newClientData, cpf: formatCPF(e.target.value) })} 
+                      value={formData.cpf} 
+                      onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })} 
                       required 
                       maxLength={14}
+                      placeholder="000.000.000-00"
+                      disabled={!!editingClient && isSupervisor}
                     />
                   </div>
                   <div className="space-y-2">
@@ -223,54 +419,91 @@ const AdminDashboard: React.FC = () => {
                     <Input 
                       id="email" 
                       type="email"
-                      value={newClientData.email} 
-                      onChange={(e) => setNewClientData({ ...newClientData, email: e.target.value })} 
+                      value={formData.email} 
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
+                      placeholder="email@exemplo.com"
+                      disabled={!!editingClient && isSupervisor}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="phone">Telefone</Label>
                     <Input 
                       id="phone" 
-                      value={newClientData.phone} 
-                      onChange={(e) => setNewClientData({ ...newClientData, phone: formatPhone(e.target.value) })} 
+                      value={formData.phone} 
+                      onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })} 
                       maxLength={15}
+                      placeholder="(00) 00000-0000"
+                      disabled={!!editingClient && isSupervisor}
                     />
                   </div>
                 </div>
 
-                {/* Seleção de Setor e Consultor (Exclusivo Admin) */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="sector">Setor *</Label>
+                {/* Se estiver editando, mostra o Status para edição */}
+                {editingClient && (
+                  <div className="space-y-2 bg-muted/50 p-4 rounded-lg border border-border shadow-sm">
+                    <Label htmlFor="status" className="flex items-center gap-2 font-semibold">Status</Label>
                     <Select 
-                      required 
-                      onValueChange={(val) => setNewClientData({ ...newClientData, sectorId: val })}
+                      value={formData.status} 
+                      onValueChange={(val: any) => setFormData({ ...formData, status: val })}
                     >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Selecione..." />
-                      </SelectTrigger>
+                      <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
                       <SelectContent>
-                        {mockSectors.map((sector) => (
-                          <SelectItem key={sector.id} value={sector.id}>{sector.name}</SelectItem>
-                        ))}
+                        <SelectItem value="pending">Pendente</SelectItem>
+                        <SelectItem value="approved">Aprovado</SelectItem>
+                        <SelectItem value="rejected">Reprovado</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="user">Consultor *</Label>
+                )}
+
+                {/* ÁREA DE VÍNCULO (SETOR E CONSULTOR) */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  
+                  {/* Setor Opcional para Admin */}
+                  {!isSupervisor && (
+                    <div className="space-y-2">
+                        <Label htmlFor="sector">Setor</Label>
+                        <Select 
+                        value={formData.sectorId}
+                        onValueChange={(val) => setFormData({ ...formData, sectorId: val })}
+                        disabled={!!editingClient && isSupervisor}
+                        >
+                        <SelectTrigger>
+                            <SelectValue placeholder={isAdmin ? "Selecione (Opcional)" : "Selecione..."} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {mockSectors.map((sector) => (
+                            <SelectItem key={sector.id} value={sector.id}>{sector.name}</SelectItem>
+                            ))}
+                        </SelectContent>
+                        </Select>
+                    </div>
+                  )}
+
+                  {/* Consultor Opcional para Admin/Supervisor */}
+                  <div className={cn("space-y-2", isSupervisor && "sm:col-span-2")}>
+                    <Label htmlFor="user">Consultor Responsável</Label>
                     <Select 
-                      required
-                      onValueChange={(val) => setNewClientData({ ...newClientData, userId: val })}
+                      value={formData.userId}
+                      onValueChange={(val) => setFormData({ ...formData, userId: val })}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Selecione..." />
+                        {/* UPDATE: PLACEHOLDER CURTO */}
+                        <SelectValue placeholder={(isAdmin || isSupervisor) ? "Selecione (Opcional)" : "Selecione o consultor..."} />
                       </SelectTrigger>
                       <SelectContent>
-                        {mockUsers.filter(u => u.role === 'user').map((user) => (
+                        {mockUsers
+                            .filter(u => u.role === 'user' && (!isSupervisor || u.sectorId === user.sectorId))
+                            .map((user) => (
                           <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
+                    {(isSupervisor || isAdmin) && !formData.userId && (
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                            * Deixe vazio para assumir este cliente você mesmo.
+                        </p>
+                    )}
                   </div>
                 </div>
 
@@ -278,14 +511,51 @@ const AdminDashboard: React.FC = () => {
                   <Label htmlFor="obs">Observações</Label>
                   <Textarea 
                     id="obs"
-                    value={newClientData.observations}
-                    onChange={(e) => setNewClientData({ ...newClientData, observations: e.target.value })}
+                    value={formData.observations}
+                    onChange={(e) => setFormData({ ...formData, observations: e.target.value })}
+                    placeholder="Informações adicionais..."
+                    disabled={!!editingClient && isSupervisor}
                   />
                 </div>
 
+                <div className="space-y-2">
+                  <Label>Anexo (Máx. 20MB)</Label>
+                  <div className="border border-dashed rounded-lg p-4 bg-muted/20 hover:bg-muted/40 transition-colors">
+                    <div className="flex flex-col items-center gap-3">
+                      {!filePreview ? (
+                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} className="w-full" disabled={!!editingClient && isSupervisor}>
+                            <Upload className="w-4 h-4 mr-2" /> {editingClient ? "Substituir Arquivo" : "Anexar Arquivo"}
+                        </Button>
+                      ) : (
+                        <div className="relative group w-full">
+                          <div className={cn("relative w-full rounded-lg overflow-hidden border bg-background flex items-center justify-center", isPdf(filePreview) ? "h-24" : "h-40")}>
+                            {isPdf(filePreview) ? (
+                              <div className="flex flex-col items-center text-red-500">
+                                <FileText className="w-10 h-10" />
+                                <span className="text-xs font-medium text-muted-foreground mt-2">Documento PDF</span>
+                              </div>
+                            ) : (
+                              <img src={filePreview} alt="Preview" className="w-full h-full object-contain" />
+                            )}
+                          </div>
+                          {!isSupervisor && (
+                              <div className="flex items-center justify-between mt-2">
+                                <span className="text-xs text-emerald-600 font-medium flex items-center">
+                                {isPdf(filePreview) ? <FileText className="w-3 h-3 mr-1" /> : <ImageIcon className="w-3 h-3 mr-1" />} Arquivo atual
+                                </span>
+                                <Button type="button" variant="destructive" size="sm" className="h-7 text-xs" onClick={removeFile}><X className="w-3 h-3 mr-1" /> Remover</Button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                      <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleFileUpload} disabled={!!editingClient && isSupervisor} />
+                    </div>
+                  </div>
+                </div>
+
                 <DialogFooter>
-                  <Button type="button" variant="outline" onClick={() => setIsAddDialogOpen(false)}>Cancelar</Button>
-                  <Button type="submit" variant="hero">Cadastrar</Button>
+                  <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
+                  <Button type="submit" variant="hero">{editingClient ? 'Salvar' : 'Cadastrar'}</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -295,7 +565,7 @@ const AdminDashboard: React.FC = () => {
         {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat) => (
-            <Card key={stat.title} className="glass-card hover:shadow-lg transition-shadow">
+            <Card key={stat.title} className={cn("glass-card hover:shadow-lg transition-shadow border-l-4", stat.borderClass)}>
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
@@ -315,8 +585,7 @@ const AdminDashboard: React.FC = () => {
         <Card className="glass-card">
           <CardHeader className="pb-4">
             <CardTitle className="text-lg flex items-center gap-2">
-              <Filter className="w-5 h-5" />
-              Filtros
+              <Filter className="w-5 h-5" /> Filtros
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -324,18 +593,16 @@ const AdminDashboard: React.FC = () => {
               <div className="lg:col-span-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    placeholder="Buscar por nome, email, CPF ou ID..."
-                    className="pl-10"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
+                  <Input 
+                    placeholder="Buscar: Nome, CPF ou ID." 
+                    className="pl-9" 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)} 
                   />
                 </div>
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Status" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os Status</SelectItem>
                   <SelectItem value="approved">Aprovado</SelectItem>
@@ -343,31 +610,27 @@ const AdminDashboard: React.FC = () => {
                   <SelectItem value="rejected">Reprovado</SelectItem>
                 </SelectContent>
               </Select>
-              <Select value={sectorFilter} onValueChange={setSectorFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Setor" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os Setores</SelectItem>
-                  {mockSectors.map((sector) => (
-                    <SelectItem key={sector.id} value={sector.id}>
-                      {sector.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              
+              {!isSupervisor && (
+                <Select value={sectorFilter} onValueChange={setSectorFilter}>
+                  <SelectTrigger><SelectValue placeholder="Setor" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os Setores</SelectItem>
+                    {mockSectors.map((sector) => (
+                      <SelectItem key={sector.id} value={sector.id}>{sector.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
               <Select value={userFilter} onValueChange={setUserFilter}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Funcionário" />
-                </SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Funcionário" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os Funcionários</SelectItem>
                   {mockUsers
-                    .filter((u) => u.role === 'user')
+                    .filter((u) => u.role === 'user' && (!isSupervisor || u.sectorId === user.sectorId))
                     .map((user) => (
-                      <SelectItem key={user.id} value={user.id}>
-                        {user.name}
-                      </SelectItem>
+                      <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
                     ))}
                 </SelectContent>
               </Select>
@@ -382,7 +645,7 @@ const AdminDashboard: React.FC = () => {
               <div>
                 <CardTitle className="text-xl">Lista de Clientes</CardTitle>
                 <CardDescription>
-                  {filteredClients.length} cliente(s) encontrado(s)
+                  Mostrando {filteredClients.length > 0 ? startIndex + 1 : 0} - {Math.min(startIndex + itemsPerPage, filteredClients.length)} de {filteredClients.length} cliente(s)
                 </CardDescription>
               </div>
             </div>
@@ -396,107 +659,47 @@ const AdminDashboard: React.FC = () => {
                     <TableHead>Cliente</TableHead>
                     <TableHead>CPF</TableHead>
                     <TableHead>Telefone</TableHead>
-                    <TableHead>Setor</TableHead>
-                    <TableHead>Funcionário</TableHead>
+                    {!isSupervisor && <TableHead>Setor</TableHead>}
+                    <TableHead>Consultor</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Ações</TableHead>
+                    <TableHead className="text-center">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredClients.map((client) => (
+                  {paginatedClients.map((client) => (
                     <TableRow key={client.id}>
-                      <TableCell className="font-mono text-sm">#{client.id}</TableCell>
+                      <TableCell className="text-xs font-semibold text-muted-foreground">#{client.id}</TableCell>
                       <TableCell>
                         <div>
                           <p className="font-medium">{client.name}</p>
                           <p className="text-sm text-muted-foreground">{client.email}</p>
                         </div>
                       </TableCell>
-                      <TableCell className="font-mono text-sm">{client.cpf}</TableCell>
-                      <TableCell>{client.phone}</TableCell>
-                      <TableCell>
-                        <Badge variant="outline">{getSectorName(client.sectorId)}</Badge>
-                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground font-medium">{client.cpf}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground font-medium">{client.phone}</TableCell>
+                      {!isSupervisor && (
+                        <TableCell>
+                          <Badge variant="outline">{getSectorName(client.sectorId)}</Badge>
+                        </TableCell>
+                      )}
                       <TableCell>{getUserName(client.userId)}</TableCell>
                       <TableCell>{getStatusBadge(client.status)}</TableCell>
-                      <TableCell>
-                        <Dialog>
-                          <DialogTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => setSelectedClient(client)}
-                            >
-                              <Eye className="w-4 h-4 mr-1" />
-                              Ver
+                      <TableCell className="text-center">
+                        <div className="flex items-center justify-center gap-1">
+                            <Button variant="ghost" size="icon" onClick={() => setViewingClientDetails(client)} title="Ver Detalhes">
+                                <Eye className="w-4 h-4" />
                             </Button>
-                          </DialogTrigger>
-                          <DialogContent className="max-w-lg">
-                            <DialogHeader>
-                              <DialogTitle>Detalhes do Cliente</DialogTitle>
-                              <DialogDescription>
-                                Informações completas do cliente
-                              </DialogDescription>
-                            </DialogHeader>
-                            {selectedClient && (
-                              <div className="space-y-4 mt-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                  <div>
-                                    <Label className="text-muted-foreground">Nome</Label>
-                                    <p className="font-medium">{selectedClient.name}</p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-muted-foreground">Email</Label>
-                                    <p className="font-medium">{selectedClient.email}</p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-muted-foreground">CPF</Label>
-                                    <p className="font-medium font-mono">{selectedClient.cpf}</p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-muted-foreground">Telefone</Label>
-                                    <p className="font-medium">{selectedClient.phone}</p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-muted-foreground">Setor</Label>
-                                    <p className="font-medium">{getSectorName(selectedClient.sectorId)}</p>
-                                  </div>
-                                  <div>
-                                    <Label className="text-muted-foreground">Funcionário</Label>
-                                    <p className="font-medium">{getUserName(selectedClient.userId)}</p>
-                                  </div>
-                                </div>
-                                <div>
-                                  <Label className="text-muted-foreground">Status</Label>
-                                  <div className="mt-1">{getStatusBadge(selectedClient.status)}</div>
-                                </div>
-                                <div>
-                                  <Label className="text-muted-foreground">Observações</Label>
-                                  <p className="mt-1 p-3 bg-muted rounded-lg text-sm">
-                                    {selectedClient.observations || 'Nenhuma observação'}
-                                  </p>
-                                </div>
-                                {selectedClient.imageUrl && (
-                                  <div>
-                                    <Label className="text-muted-foreground">Anexo</Label>
-                                    <div className="mt-2 p-4 border rounded-lg">
-                                      <img
-                                        src={selectedClient.imageUrl}
-                                        alt="Anexo do cliente"
-                                        className="max-w-full h-auto rounded"
-                                      />
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            )}
-                          </DialogContent>
-                        </Dialog>
+                            
+                            <Button variant="ghost" size="icon" onClick={() => handleOpenForm(client)} title="Editar" className="text-muted-foreground hover:text-amber-600">
+                                <Edit className="w-4 h-4" />
+                            </Button>
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
+              
               {filteredClients.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground">
                   <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
@@ -504,8 +707,205 @@ const AdminDashboard: React.FC = () => {
                 </div>
               )}
             </div>
+
+            {/* Paginação */}
+            {filteredClients.length > 0 && (
+              <div className="mt-4 border-t pt-4">
+                <Pagination>
+                  <PaginationContent>
+                    <PaginationItem>
+                      <PaginationPrevious 
+                        onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)} 
+                        className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                      />
+                    </PaginationItem>
+                    
+                    {getPageNumbers().map((page, index) => (
+                      <PaginationItem key={index}>
+                        {page === '...' ? (
+                          <PaginationEllipsis />
+                        ) : (
+                          <PaginationLink 
+                            isActive={currentPage === page} 
+                            onClick={() => setCurrentPage(page as number)}
+                            className={cn("cursor-pointer font-mono font-medium", currentPage === page && "bg-primary text-primary-foreground")}
+                          >
+                            {page}
+                          </PaginationLink>
+                        )}
+                      </PaginationItem>
+                    ))}
+
+                    <PaginationItem>
+                      <PaginationNext 
+                        onClick={() => currentPage < totalPages && setCurrentPage(currentPage + 1)} 
+                        className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                      />
+                    </PaginationItem>
+                  </PaginationContent>
+                </Pagination>
+              </div>
+            )}
+
           </CardContent>
         </Card>
+
+        {/* --- DETALHES MODAL (MANTIDO) --- */}
+        <Dialog open={!!viewingClientDetails} onOpenChange={() => setViewingClientDetails(null)}>
+            <DialogContent className="max-w-4xl p-0 gap-0 overflow-hidden bg-background border border-border shadow-2xl rounded-2xl [&>button]:hidden">
+              
+              <DialogHeader className="sr-only">
+                <DialogTitle>Detalhes do Cliente</DialogTitle>
+                <DialogDescription>Visualização completa dos dados</DialogDescription>
+              </DialogHeader>
+
+              {viewingClientDetails && (
+                <div className="flex flex-col h-full">
+                    <div className="relative bg-zinc-50/80 dark:bg-zinc-900/50 p-6 border-b border-border/60">
+                         <div className="absolute top-4 right-4 z-50">
+                            {/* HOVER VERDE AQUI */}
+                            <Button variant="ghost" size="icon" onClick={() => setViewingClientDetails(null)} className="rounded-full bg-zinc-200/50 hover:bg-emerald-500 hover:text-white transition-all shadow-sm w-9 h-9">
+                                <X className="w-5 h-5" />
+                            </Button>
+                         </div>
+                         <div className="absolute top-5 right-16">
+                            {getStatusBadge(viewingClientDetails.status)}
+                         </div>
+                         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+                            <div className="text-center sm:text-left space-y-1 mt-1">
+                                <h2 className="text-2xl font-bold tracking-tight text-foreground">{viewingClientDetails.name}</h2>
+                                <p className="text-sm text-muted-foreground flex items-center justify-center sm:justify-start gap-1">
+                                    <span className="font-mono bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded text-xs">ID: {viewingClientDetails.id}</span>
+                                    <span className="mx-1">•</span>
+                                    <span>{getSectorName(viewingClientDetails.sectorId)}</span>
+                                </p>
+                            </div>
+                         </div>
+                    </div>
+
+                    <div className="p-6 space-y-8">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="group relative p-3 rounded-xl border bg-card hover:bg-zinc-50/80 transition-all cursor-pointer shadow-sm" onClick={() => copyToClipboard(viewingClientDetails.email, 'Email')}>
+                                <div className="flex items-center gap-2 mb-1.5 text-muted-foreground group-hover:text-primary transition-colors">
+                                    <Mail className="w-4 h-4" /> <span className="text-xs font-medium uppercase tracking-wider">Email</span>
+                                </div>
+                                <p className="text-sm font-semibold text-foreground break-all">{viewingClientDetails.email || '-'}</p>
+                                <Copy className="w-3 h-3 absolute top-3 right-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                            </div>
+                            <div className="group relative p-3 rounded-xl border bg-card hover:bg-zinc-50/80 transition-all cursor-pointer shadow-sm" onClick={() => copyToClipboard(viewingClientDetails.phone, 'Telefone')}>
+                                <div className="flex items-center gap-2 mb-1.5 text-muted-foreground group-hover:text-primary transition-colors">
+                                    <Phone className="w-4 h-4" /> <span className="text-xs font-medium uppercase tracking-wider">Telefone</span>
+                                </div>
+                                <p className="text-sm font-semibold truncate text-foreground">{viewingClientDetails.phone || '-'}</p>
+                                <Copy className="w-3 h-3 absolute top-3 right-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                            </div>
+                            <div className="group relative p-3 rounded-xl border bg-card hover:bg-zinc-50/80 transition-all cursor-pointer shadow-sm" onClick={() => copyToClipboard(viewingClientDetails.cpf, 'CPF')}>
+                                <div className="flex items-center gap-2 mb-1.5 text-muted-foreground group-hover:text-primary transition-colors">
+                                    <Hash className="w-4 h-4" /> <span className="text-xs font-medium uppercase tracking-wider">CPF</span>
+                                </div>
+                                <p className="text-sm font-semibold truncate text-foreground">{viewingClientDetails.cpf}</p>
+                                <Copy className="w-3 h-3 absolute top-3 right-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="md:col-span-1 space-y-4">
+                                <div className="bg-primary/5 p-4 rounded-xl border border-primary/20 flex flex-col gap-3 relative overflow-hidden group">
+                                    <div className="absolute top-0 right-0 w-20 h-20 bg-primary/5 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
+                                    <div className="flex items-center gap-3 relative z-10">
+                                        <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-sm">
+                                            <ShieldCheck className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-bold text-primary/80 uppercase tracking-widest">Consultor Resp.</p>
+                                            <p className="text-sm font-bold text-foreground">{getUserName(viewingClientDetails.userId)}</p>
+                                        </div>
+                                    </div>
+                                    <div className="text-xs text-muted-foreground pt-2 border-t border-primary/10 relative z-10 flex items-center gap-2">
+                                        <Clock className="w-3 h-3" />
+                                        Cadastrado em {format(new Date(viewingClientDetails.createdAt), "dd/MM/yy")}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="md:col-span-2 space-y-2">
+                                <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                    <FileCheck className="w-3.5 h-3.5" /> Observações Internas
+                                </Label>
+                                <div className="bg-zinc-50/50 p-4 rounded-xl border border-dashed border-zinc-200 text-sm text-foreground/80 min-h-[100px] leading-relaxed">
+                                    {viewingClientDetails.observations || <span className="text-muted-foreground/50 italic">Sem observações registradas.</span>}
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                             <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                                <ImageIcon className="w-3.5 h-3.5" /> Documento Vinculado
+                            </Label>
+                            {viewingClientDetails.imageUrl ? (
+                                <div className="group relative w-full h-24 bg-zinc-50 rounded-xl border overflow-hidden cursor-pointer hover:border-zinc-400 transition-all" onClick={() => setViewingFile(viewingClientDetails.imageUrl!)}>
+                                    {!isPdf(viewingClientDetails.imageUrl) && (
+                                        <div className="absolute inset-0 bg-cover bg-center opacity-20 blur-sm group-hover:scale-105 transition-transform duration-500" style={{ backgroundImage: `url(${viewingClientDetails.imageUrl})` }} />
+                                    )}
+                                    <div className="absolute inset-0 flex items-center justify-between px-6 z-10">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-12 h-12 bg-white rounded-lg shadow-sm flex items-center justify-center text-zinc-400">
+                                                {isPdf(viewingClientDetails.imageUrl) ? <FileText className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}
+                                            </div>
+                                            <div>
+                                                <p className="font-semibold text-sm">Visualizar Anexo</p>
+                                                <p className="text-xs text-muted-foreground">Clique para expandir</p>
+                                            </div>
+                                        </div>
+                                        <Button variant="ghost" size="icon" className="rounded-full bg-white/50 hover:bg-white shadow-sm"><ExternalLink className="w-4 h-4" /></Button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="w-full h-16 border border-dashed rounded-xl flex items-center justify-center text-xs text-muted-foreground bg-zinc-50/50">Nenhum documento anexado.</div>
+                            )}
+                        </div>
+                    </div>
+                    <div className="p-4 bg-zinc-50/50 border-t flex justify-end">
+                        <Button variant="outline" onClick={() => setViewingClientDetails(null)} className="rounded-lg px-6">Fechar Ficha</Button>
+                    </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
+            <DialogContent className="fixed !left-0 !top-0 !translate-x-0 !translate-y-0 w-screen h-screen max-w-none p-0 bg-emerald-950/90 backdrop-blur-md border-none shadow-none focus:outline-none [&>button]:hidden flex items-center justify-center pointer-events-none z-[100]">
+               <DialogTitle className="sr-only">Visualização de Arquivo</DialogTitle>
+               <div className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto">
+                 <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-2 p-2 bg-black/80 backdrop-blur-md rounded-full shadow-2xl border border-white/10">
+                   {!isPdf(viewingFile || '') && (
+                     <>
+                       <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.max(0.5, s - 0.25))}><ZoomOut className="w-4 h-4" /></Button>
+                       <span className="text-xs font-medium text-white w-12 text-center select-none">{Math.round(zoomScale * 100)}%</span>
+                       <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.min(3, s + 0.25))}><ZoomIn className="w-4 h-4" /></Button>
+                       <div className="w-px h-4 bg-white/20 mx-1" />
+                     </>
+                   )}
+                   <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => { /* Download Logic */ }}><Download className="w-4 h-4" /></Button>
+                   {/* HOVER VERDE AQUI TAMBÉM */}
+                   <Button variant="ghost" size="icon" className="text-white hover:bg-emerald-500/80 h-8 w-8 rounded-full" onClick={() => setViewingFile(null)}><X className="w-4 h-4" /></Button>
+                 </div>
+                 <div className="w-[95vw] h-[90vh] flex items-center justify-center relative mt-8">
+                    {viewingFile && (
+                        isPdf(viewingFile) ? (
+                            <div className="w-full h-full bg-white rounded-lg shadow-2xl overflow-hidden border border-border">
+                                <object data={viewingFile} type="application/pdf" className="w-full h-full" />
+                            </div>
+                        ) : (
+                            <div className="w-full h-full flex items-center justify-center overflow-auto p-4">
+                                <img src={viewingFile} alt="Preview" className="rounded-lg shadow-2xl object-contain max-w-full max-h-full" style={{ transform: `scale(${zoomScale})` }} />
+                            </div>
+                        )
+                    )}
+                 </div>
+               </div>
+            </DialogContent>
+          </Dialog>
       </div>
     </DashboardLayout>
   );

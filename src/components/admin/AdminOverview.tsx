@@ -1,21 +1,14 @@
-/**
- * ARQUIVO: src/components/admin/AdminOverview.tsx
- * * ATUALIZAÇÕES:
- * 1. Adicionada mensagem de "Bem-vindo" no cabeçalho (movida da tela de clientes).
- * 2. Importado useAuth para pegar o nome do usuário.
- */
-
 import React, { useState, useMemo } from 'react';
-import { useAuth } from '@/contexts/AuthContext'; // Importado
+import { useAuth } from '@/contexts/AuthContext';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { mockClients, mockUsers, mockSectors } from '@/data/mockData';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { format, subDays, startOfMonth, endOfMonth } from 'date-fns';
+import { format, subDays, startOfMonth, endOfMonth, isSameDay } from 'date-fns';
 import { type DateRange } from 'react-day-picker';
 import { 
   Users, 
@@ -30,20 +23,25 @@ import {
   BarChart3,
   UserCheck,
   Calendar as CalendarIcon,
-  Zap // Ícone para o bem-vindo
+  Zap,
+  Trophy,
+  Rocket
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 
 const AdminOverview: React.FC = () => {
-  const { user } = useAuth(); // Hook de autenticação
+  const { user } = useAuth();
+  const isSupervisor = user?.role === 'supervisor';
 
-  // Estados dos Filtros
-  const [selectedSector, setSelectedSector] = useState<string>('all');
+  // --- Estados dos Filtros ---
+  const [selectedSector, setSelectedSector] = useState<string>(
+    isSupervisor && user?.sectorId ? user.sectorId : 'all'
+  );
   const [selectedUser, setSelectedUser] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [periodPreset, setPeriodPreset] = useState<string>('all');
   const [date, setDate] = useState<DateRange | undefined>();
 
+  // --- Handlers ---
   const handlePeriodPresetChange = (value: string) => {
     setPeriodPreset(value);
     const today = new Date();
@@ -80,7 +78,9 @@ const AdminOverview: React.FC = () => {
   };
 
   const clearFilters = () => {
-    setSelectedSector('all');
+    if (!isSupervisor) {
+      setSelectedSector('all');
+    }
     setSelectedUser('all');
     setSelectedStatus('all');
     setPeriodPreset('all');
@@ -90,7 +90,11 @@ const AdminOverview: React.FC = () => {
   // --- Lógica de Filtragem ---
   const filteredData = useMemo(() => {
     return mockClients.filter(client => {
-      const matchSector = selectedSector === 'all' || client.sectorId === selectedSector;
+      // Regra de segurança para supervisor
+      const matchSector = isSupervisor 
+        ? client.sectorId === user?.sectorId
+        : (selectedSector === 'all' || client.sectorId === selectedSector);
+
       const matchUser = selectedUser === 'all' || client.userId === selectedUser;
       const matchStatus = selectedStatus === 'all' || client.status === selectedStatus;
       
@@ -111,14 +115,17 @@ const AdminOverview: React.FC = () => {
       
       return matchSector && matchUser && matchStatus && matchDate;
     });
-  }, [selectedSector, selectedUser, selectedStatus, date]);
+  }, [selectedSector, selectedUser, selectedStatus, date, isSupervisor, user?.sectorId]);
 
   const availableConsultants = useMemo(() => {
+    if (isSupervisor) {
+      return mockUsers.filter(u => u.role === 'user' && u.sectorId === user?.sectorId);
+    }
     if (selectedSector === 'all') return mockUsers.filter(u => u.role === 'user');
     return mockUsers.filter(u => u.role === 'user' && u.sectorId === selectedSector);
-  }, [selectedSector]);
+  }, [selectedSector, isSupervisor, user?.sectorId]);
 
-  // Métricas
+  // --- Métricas Gerais ---
   const total = filteredData.length;
   const approved = filteredData.filter(c => c.status === 'approved').length;
   const pending = filteredData.filter(c => c.status === 'pending').length;
@@ -128,23 +135,39 @@ const AdminOverview: React.FC = () => {
   const pendingPerc = total > 0 ? (pending / total) * 100 : 0;
   const rejectedPerc = total > 0 ? (rejected / total) * 100 : 0;
   
+  // --- Métricas Específicas para Cards Inferiores ---
   const activeConsultantIds = Array.from(new Set(filteredData.map(c => c.userId)));
   const activeConsultantsCount = activeConsultantIds.length;
+
+  // Lógica: Top Performer (Supervisor)
+  const topPerformer = useMemo(() => {
+    if (filteredData.length === 0) return null;
+    const stats: Record<string, number> = {};
+    filteredData.forEach(c => {
+        if (c.status === 'approved') stats[c.userId] = (stats[c.userId] || 0) + 1;
+    });
+    const topId = Object.keys(stats).reduce((a, b) => stats[a] > stats[b] ? a : b, '');
+    if (!topId) return null;
+    const userData = mockUsers.find(u => u.id === topId);
+    return { name: userData?.name.split(' ')[0], count: stats[topId] };
+  }, [filteredData]);
+
+  // Lógica: Novos Hoje (Supervisor)
+  const newToday = filteredData.filter(c => isSameDay(new Date(c.createdAt), new Date())).length;
 
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in">
         
-        {/* Cabeçalho com Bem-vindo */}
+        {/* Cabeçalho */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">Dashboard</h1>
             <p className="text-muted-foreground mt-1">
-              Análise de performance com filtros avançados.
+              {isSupervisor ? 'Visão geral da sua equipe e resultados.' : 'Análise de performance com filtros avançados.'}
             </p>
           </div>
           
-          {/* Mensagem de Bem-Vindo (Movida para cá) */}
           <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/40 px-4 py-2 rounded-full border border-border/50 shadow-sm">
             <Zap className="w-4 h-4 text-amber-500 fill-amber-500/20" />
             <span>Bem-vindo, <strong className="text-foreground font-semibold">{user?.name}</strong></span>
@@ -161,35 +184,42 @@ const AdminOverview: React.FC = () => {
               </div>
               
               <div className="flex flex-wrap items-center justify-end gap-3 w-full xl:w-auto">
-                <div className="w-full sm:w-[150px]">
-                  <Select value={selectedSector} onValueChange={(v) => { setSelectedSector(v); setSelectedUser('all'); }}>
-                    <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
-                      <SelectValue placeholder="Setor" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="all">Todos Setores</SelectItem>
-                      {mockSectors.map((s) => (
-                        <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                {selectedSector !== 'all' && (
-                  <div className="w-full sm:w-[150px] animate-in fade-in slide-in-from-left-2 duration-300">
-                    <Select value={selectedUser} onValueChange={setSelectedUser}>
+                
+                {/* REGRA: Se for Supervisor, o campo de Setor é Ocultado (Hidden) 
+                    Se for Admin, ele aparece normalmente.
+                */}
+                {!isSupervisor && (
+                  <div className="w-full sm:w-[150px]">
+                    <Select 
+                      value={selectedSector} 
+                      onValueChange={(v) => { setSelectedSector(v); setSelectedUser('all'); }}
+                    >
                       <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
-                        <SelectValue placeholder="Consultor" />
+                        <SelectValue placeholder="Setor" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="all">Todos Consultores</SelectItem>
-                        {availableConsultants.map((u) => (
-                          <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                        <SelectItem value="all">Todos Setores</SelectItem>
+                        {mockSectors.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                 )}
+
+                <div className="w-full sm:w-[150px] animate-in fade-in slide-in-from-left-2 duration-300">
+                  <Select value={selectedUser} onValueChange={setSelectedUser}>
+                    <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
+                      <SelectValue placeholder="Consultor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos Consultores</SelectItem>
+                      {availableConsultants.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 <div className="w-full sm:w-[150px]">
                   <Select value={selectedStatus} onValueChange={setSelectedStatus}>
@@ -244,8 +274,7 @@ const AdminOverview: React.FC = () => {
                   </div>
                 )}
 
-                {(selectedSector !== 'all' || selectedUser !== 'all' || selectedStatus !== 'all' || periodPreset !== 'all') && (
-                  <Button 
+                <Button 
                     variant="ghost" 
                     size="icon" 
                     onClick={clearFilters}
@@ -254,13 +283,12 @@ const AdminOverview: React.FC = () => {
                   >
                     <Eraser className="w-5 h-5" />
                   </Button>
-                )}
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* --- CARDS DE MÉTRICAS (MANTIDOS) --- */}
+        {/* --- CARDS PRINCIPAIS (Totais) --- */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           <Card className="shadow-sm border-l-4 border-l-blue-600">
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -322,19 +350,39 @@ const AdminOverview: React.FC = () => {
           </Card>
         </div>
 
-        {/* --- MÉTRICAS SECUNDÁRIAS E LISTAS (MANTIDOS) --- */}
+        {/* --- CARDS SECUNDÁRIOS (LINHA INOVADA PARA SUPERVISOR) --- */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-           <Card className="shadow-sm border-l-4 border-l-slate-500">
-             <CardHeader className="pb-2">
-               <CardTitle className="text-xs uppercase text-muted-foreground font-semibold tracking-wider flex items-center gap-2">
-                 <UserCheck className="w-3 h-3 text-slate-600" /> Equipe em Campo
-               </CardTitle>
-             </CardHeader>
-             <CardContent>
-               <div className="text-2xl font-bold text-slate-700">{activeConsultantsCount}</div>
-               <p className="text-xs text-muted-foreground mt-1">Consultores ativos no filtro</p>
-             </CardContent>
-           </Card>
+           
+           {/* Card 1: Varia conforme o cargo */}
+           {isSupervisor ? (
+             <Card className="shadow-sm border-l-4 border-l-violet-500 bg-violet-50/10">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs uppercase text-violet-600 font-semibold tracking-wider flex items-center gap-2">
+                    <Trophy className="w-3 h-3" /> Destaque
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-xl font-bold text-foreground truncate">
+                    {topPerformer ? topPerformer.name : '-'}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {topPerformer ? `${topPerformer.count} aprovações no filtro` : 'Sem dados suficientes'}
+                  </p>
+                </CardContent>
+             </Card>
+           ) : (
+             <Card className="shadow-sm border-l-4 border-l-slate-500">
+               <CardHeader className="pb-2">
+                 <CardTitle className="text-xs uppercase text-muted-foreground font-semibold tracking-wider flex items-center gap-2">
+                   <UserCheck className="w-3 h-3 text-slate-600" /> Equipe em Campo
+                 </CardTitle>
+               </CardHeader>
+               <CardContent>
+                 <div className="text-2xl font-bold text-slate-700">{activeConsultantsCount}</div>
+                 <p className="text-xs text-muted-foreground mt-1">Consultores ativos no filtro</p>
+               </CardContent>
+             </Card>
+           )}
 
            <Card>
              <CardHeader className="pb-2">
@@ -362,21 +410,39 @@ const AdminOverview: React.FC = () => {
              </CardContent>
            </Card>
 
-           <Card>
-             <CardHeader className="pb-2">
-               <CardTitle className="text-xs uppercase text-muted-foreground font-semibold tracking-wider flex items-center gap-2">
-                 <Briefcase className="w-3 h-3" /> Setores Envolvidos
-               </CardTitle>
-             </CardHeader>
-             <CardContent>
-               <div className="text-2xl font-bold">
-                 {selectedSector === 'all' ? mockSectors.length : 1}
-               </div>
-               <p className="text-xs text-muted-foreground mt-1">Áreas operando neste filtro</p>
-             </CardContent>
-           </Card>
+           {/* Card 4: Varia conforme o cargo */}
+           {isSupervisor ? (
+             <Card className="shadow-sm border-l-4 border-l-amber-500 bg-amber-50/10">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs uppercase text-amber-600 font-semibold tracking-wider flex items-center gap-2">
+                    <Rocket className="w-3 h-3" /> Cadastros Hoje
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-foreground">
+                    {newToday}
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-1">Entrada diária do setor</p>
+                </CardContent>
+             </Card>
+           ) : (
+             <Card>
+               <CardHeader className="pb-2">
+                 <CardTitle className="text-xs uppercase text-muted-foreground font-semibold tracking-wider flex items-center gap-2">
+                   <Briefcase className="w-3 h-3" /> Setores Envolvidos
+                 </CardTitle>
+               </CardHeader>
+               <CardContent>
+                 <div className="text-2xl font-bold">
+                   {selectedSector === 'all' ? mockSectors.length : 1}
+                 </div>
+                 <p className="text-xs text-muted-foreground mt-1">Áreas operando neste filtro</p>
+               </CardContent>
+             </Card>
+           )}
         </div>
 
+        {/* Tabelas Inferiores */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <Card className="lg:col-span-2 flex flex-col h-full">
             <CardHeader>
@@ -401,9 +467,11 @@ const AdminOverview: React.FC = () => {
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
-                       <span className="text-xs text-muted-foreground hidden sm:inline-block">
-                         {mockSectors.find(s => s.id === client.sectorId)?.name}
-                       </span>
+                       {!isSupervisor && (
+                         <span className="text-xs text-muted-foreground hidden sm:inline-block">
+                           {mockSectors.find(s => s.id === client.sectorId)?.name}
+                         </span>
+                       )}
                        <div className={`px-2 py-1 rounded text-xs font-medium capitalize border
                          ${client.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 
                            client.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' : 

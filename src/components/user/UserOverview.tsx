@@ -1,12 +1,3 @@
-/**
- * ARQUIVO: src/components/user/UserOverview.tsx
- * * ATUALIZAÇÕES FINAIS:
- * 1. Filtro de Data: Inputs ajustados para permitir APENAS DIGITAÇÃO.
- * 2. Removido evento de click que abria o calendário.
- * 3. Ocultado indicador nativo do navegador via CSS.
- * 4. Mantido layout e ícone personalizado à esquerda.
- */
-
 import React, { useState, useMemo } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
@@ -38,14 +29,12 @@ const UserOverview: React.FC = () => {
   const [customDate, setCustomDate] = useState<{ from: string; to: string }>({ from: '', to: '' });
 
   // -- DADOS E FILTRAGEM --
-  // 1. Pega todos os clientes do usuário
   const allMyClients = useMemo(() => {
     return mockClients
       .filter(c => c.userId === user?.id)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [user?.id]);
 
-  // 2. Aplica o filtro de período
   const filteredClients = useMemo(() => {
     return allMyClients.filter(client => {
       const clientDate = new Date(client.createdAt);
@@ -74,7 +63,7 @@ const UserOverview: React.FC = () => {
     setCustomDate({ from: '', to: '' });
   };
   
-  // -- CÁLCULOS ESTATÍSTICOS (Baseados nos dados filtrados) --
+  // -- CÁLCULOS ESTATÍSTICOS --
   const total = filteredClients.length;
   const approved = filteredClients.filter(c => c.status === 'approved').length;
   const pending = filteredClients.filter(c => c.status === 'pending').length;
@@ -86,7 +75,7 @@ const UserOverview: React.FC = () => {
   const createdThisMonth = filteredClients.filter(c => isSameMonth(new Date(c.createdAt), today)).length;
   const lastClientDate = filteredClients.length > 0 ? format(new Date(filteredClients[0].createdAt), "dd/MM 'às' HH:mm") : '-';
 
-  // -- PAGINAÇÃO DA LISTA FILTRADA --
+  // -- PAGINAÇÃO --
   const totalPages = Math.ceil(total / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedClients = filteredClients.slice(startIndex, startIndex + itemsPerPage);
@@ -106,7 +95,6 @@ const UserOverview: React.FC = () => {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
-            {/* Filtro de Período */}
             <div className="flex items-center gap-2 bg-background p-1 rounded-lg border shadow-sm">
                 <Select value={periodFilter} onValueChange={setPeriodFilter}>
                 <SelectTrigger className="w-full sm:w-[160px] h-9 border-none shadow-none focus:ring-0"> 
@@ -129,7 +117,6 @@ const UserOverview: React.FC = () => {
                 </SelectContent>
                 </Select>
 
-                {/* Inputs de Data Personalizada (APENAS DIGITAÇÃO) */}
                 {periodFilter === 'custom' && (
                 <div className="flex items-center gap-2 px-2 animate-in fade-in slide-in-from-left-2 border-l">
                     <div className="relative w-[140px]"> 
@@ -154,7 +141,6 @@ const UserOverview: React.FC = () => {
                 </div>
                 )}
 
-                 {/* Botão Limpar Filtro */}
                  {periodFilter !== 'all' && (
                   <Button 
                     variant="ghost" 
@@ -186,7 +172,8 @@ const UserOverview: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-foreground">{total}</div>
+              {/* ALTERADO: text-foreground -> text-black */}
+              <div className="text-3xl font-bold text-black">{total}</div>
               <p className="text-xs text-muted-foreground mt-1">Clientes listados</p>
             </CardContent>
           </Card>
@@ -199,7 +186,8 @@ const UserOverview: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-emerald-600">{approved}</div>
+              {/* ALTERADO: text-emerald-600 -> text-black */}
+              <div className="text-3xl font-bold text-black">{approved}</div>
               <p className="text-xs text-muted-foreground mt-1">Vendas concluídas</p>
             </CardContent>
           </Card>
@@ -212,7 +200,8 @@ const UserOverview: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-orange-600">{pending}</div>
+              {/* ALTERADO: text-orange-600 -> text-black */}
+              <div className="text-3xl font-bold text-black">{pending}</div>
               <p className="text-xs text-muted-foreground mt-1">Em análise</p>
             </CardContent>
           </Card>
@@ -225,7 +214,8 @@ const UserOverview: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-red-600">{rejected}</div>
+              {/* ALTERADO: text-red-600 -> text-black */}
+              <div className="text-3xl font-bold text-black">{rejected}</div>
               <p className="text-xs text-muted-foreground mt-1">Recusados</p>
             </CardContent>
           </Card>
@@ -238,7 +228,7 @@ const UserOverview: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">{createdToday}</div>
+              <div className="text-2xl font-bold text-black">{createdToday}</div>
               <p className="text-xs text-muted-foreground mt-1">Do total filtrado</p>
             </CardContent>
           </Card>
@@ -247,11 +237,11 @@ const UserOverview: React.FC = () => {
           <Card className="shadow-sm hover:bg-muted/30 transition-colors">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
-                <Calendar className="w-4 h-4 text-blue-500" /> Este Mês
+                <Calendar className="w-4 h-4 text-black" /> Este Mês
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-foreground">{createdThisMonth}</div>
+              <div className="text-2xl font-bold text-black">{createdThisMonth}</div>
               <p className="text-xs text-muted-foreground mt-1">Do total filtrado</p>
             </CardContent>
           </Card>
@@ -260,11 +250,11 @@ const UserOverview: React.FC = () => {
            <Card className="shadow-sm hover:bg-muted/30 transition-colors">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
-                <TrendingUp className="w-4 h-4 text-purple-500" /> Taxa de Aprovação
+                <TrendingUp className="w-4 h-4 text-emerald-500" /> Taxa de Aprovação
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-purple-600">{efficiency}%</div>
+              <div className="text-2xl font-bold text-black">{efficiency}%</div>
               <p className="text-xs text-muted-foreground mt-1">Sobre visualizados</p>
             </CardContent>
           </Card>
@@ -273,16 +263,16 @@ const UserOverview: React.FC = () => {
           <Card className="shadow-sm hover:bg-muted/30 transition-colors">
             <CardHeader className="pb-2">
               <CardTitle className="text-sm font-medium flex items-center gap-2 text-muted-foreground">
-                <Activity className="w-4 h-4 text-pink-500" /> Último Registro
+                <Activity className="w-4 h-4 text-amber-500" /> Último Registro
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-lg font-bold text-foreground truncate">{lastClientDate}</div>
+              <div className="text-lg font-bold text-black truncate">{lastClientDate}</div>
             </CardContent>
           </Card>
         </div>
 
-        {/* --- ÚLTIMAS ATUALIZAÇÕES (PAGINADO 15 ITENS) --- */}
+        {/* --- ÚLTIMAS ATUALIZAÇÕES --- */}
         <Card className="glass-card">
           <CardHeader>
             <div className="flex items-center justify-between">

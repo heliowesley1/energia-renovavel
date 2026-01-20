@@ -2,10 +2,10 @@ export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'user';
+  role: 'admin' | 'user' | 'supervisor'; // Added 'supervisor'
   sectorId?: string;
   password?: string;
-  active: boolean; // Novo campo para controle de inativação
+  active: boolean;
 }
 
 export interface Sector {
@@ -35,4 +35,4 @@ export interface AuthContextType {
   login: (email: string, password: string) => boolean;
   logout: () => void;
   isAuthenticated: boolean;
-}0
+}

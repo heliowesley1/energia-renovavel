@@ -11,6 +11,7 @@ export const mockUsers: User[] = [
   { id: '2', name: 'João Silva', email: 'joao@energia.com', role: 'user', sectorId: '1', active: true },
   { id: '3', name: 'Maria Santos', email: 'maria@energia.com', role: 'user', sectorId: '2', active: true },
   { id: '4', name: 'Pedro Costa', email: 'pedro@energia.com', role: 'user', sectorId: '3', active: false }, // Exemplo de inativo
+  { id: '5', name: 'Raul Clewton', email: 'raul@energia.com', role: 'supervisor', sectorId: '3', active: true }, 
 ];
 
 export const mockClients: Client[] = [

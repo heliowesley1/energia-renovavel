@@ -1,10 +1,3 @@
-/**
- * ARQUIVO: src/pages/Login.tsx
- * * ATUALIZAÇÕES:
- * 1. Posição do Formulário: Adicionada a classe `-mt-20` (margem negativa no topo) no container <main>.
- * Isso "puxa" o conteúdo para cima, tirando do centro exato e deixando mais alto conforme solicitado.
- */
-
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -44,10 +37,12 @@ const Login: React.FC = () => {
         
         navigate('/dashboard');
       } else {
+        // ATUALIZAÇÃO AQUI: Estilização customizada para o erro
         toast({
           title: 'Erro no login',
           description: 'Email ou senha incorretos.',
-          variant: 'destructive',
+          variant: 'destructive', // Mantém variante para ícone/semântica
+          className: "bg-white text-black border-none shadow-lg", // Força fundo branco e texto preto
         });
       }
       setIsLoading(false);
@@ -93,7 +88,6 @@ const Login: React.FC = () => {
       </div>
 
       {/* --- ÁREA CENTRAL (FORMULÁRIO) --- */}
-      {/* ADICIONADO: -mt-20 para subir visualmente o bloco inteiro */}
       <main className="flex-1 flex flex-col items-center justify-center p-4 w-full relative z-10 -mt-20">
         <div className="w-full max-w-md animate-fade-in">
           

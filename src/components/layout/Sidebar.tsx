@@ -1,9 +1,3 @@
-/**
- * ARQUIVO: src/components/layout/Sidebar.tsx
- * * ATUALIZAÇÕES:
- * 1. Renomeado item de menu do usuário: "Visão Geral" -> "Dashboard".
- */
-
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
@@ -19,7 +13,8 @@ import {
   Menu,
   X,
   PieChart,
-  ClipboardList
+  ClipboardList,
+  Eye // Added for supervisor clarity if needed
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -45,13 +40,21 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
     { href: '/dashboard/users', icon: UserCog, label: 'Usuários' },
   ];
 
-  // Links atualizados para o Funcionário
+  // Supervisor has specific filtered views
+  const supervisorLinks = [
+    { href: '/dashboard', icon: LayoutDashboard, label: 'Visão do Setor' },
+    { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios do Setor' },
+    { href: '/dashboard/clients', icon: Users, label: 'Clientes do Setor' },
+  ];
+
   const userLinks = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' }, // Alterado de "Visão Geral"
+    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
     { href: '/dashboard/my-clients', icon: ClipboardList, label: 'Meus Clientes' },
   ];
 
-  const links = user?.role === 'admin' ? adminLinks : userLinks;
+  let links = userLinks;
+  if (user?.role === 'admin') links = adminLinks;
+  if (user?.role === 'supervisor') links = supervisorLinks;
 
   return (
     <>
@@ -96,7 +99,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
               {user?.name}
             </p>
             <p className="text-xs text-sidebar-foreground/60 capitalize">
-              {user?.role === 'admin' ? 'Administrador' : 'Consultor'}
+              {user?.role === 'user' ? 'Consultor' : user?.role === 'supervisor' ? 'Supervisor' : 'Administrador'}
             </p>
           </div>
 
