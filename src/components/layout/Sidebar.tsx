@@ -14,7 +14,7 @@ import {
   X,
   PieChart,
   ClipboardList,
-  Eye // Added for supervisor clarity if needed
+  Eye
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -40,7 +40,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
     { href: '/dashboard/users', icon: UserCog, label: 'Usuários' },
   ];
 
-  // Supervisor has specific filtered views
   const supervisorLinks = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Visão do Setor' },
     { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios do Setor' },
@@ -52,9 +51,10 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
     { href: '/dashboard/my-clients', icon: ClipboardList, label: 'Meus Clientes' },
   ];
 
+  // Definição da hierarquia de links baseada no cargo do banco
   let links = userLinks;
   if (user?.role === 'admin') links = adminLinks;
-  if (user?.role === 'supervisor') links = supervisorLinks;
+  else if (user?.role === 'supervisor') links = supervisorLinks;
 
   return (
     <>

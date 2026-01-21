@@ -11,12 +11,15 @@ const PrivateRoute = ({ children }: { children: React.ReactNode }) => {
 
 const App = () => (
   <AuthProvider>
+    {/* O basename deve ser exatamente o nome da pasta no htdocs */}
     <BrowserRouter basename="/energia_renovavel">
       <Routes>
         <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
+        
+        {/* Rota pai do Dashboard */}
         <Route 
-          path="/dashboard" 
+          path="/dashboard/*" 
           element={
             <PrivateRoute>
               <Dashboard />

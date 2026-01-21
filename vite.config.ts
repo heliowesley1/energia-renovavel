@@ -1,5 +1,5 @@
 import { defineConfig } from "vite";
-import react from "@vitejs/plugin-react-swc"; // Esta é a linha que estava falhando
+import react from "@vitejs/plugin-react-swc";
 import path from "path";
 
 export default defineConfig({

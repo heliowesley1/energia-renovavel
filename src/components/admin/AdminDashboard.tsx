@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useApi } from '@/hooks/useApi';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import { mockClients, mockSectors, mockUsers } from '@/data/mockData';
 import type { Client } from '@/types';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -75,17 +75,41 @@ import { cn } from '@/lib/utils';
 const AdminDashboard: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
+  const api = useApi();
   const isSupervisor = user?.role === 'supervisor';
   const isAdmin = user?.role === 'admin';
 
-  const [clients, setClients] = useState<Client[]>(mockClients);
+  // --- ESTADOS DE DADOS REAIS ---
+  const [clients, setClients] = useState<Client[]>([]);
+  const [dbSectors, setDbSectors] = useState<any[]>([]);
+  const [dbUsers, setDbUsers] = useState<any[]>([]);
+  
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [sectorFilter, setSectorFilter] = useState<string>(
     isSupervisor && user?.sectorId ? user.sectorId : 'all'
   );
   const [userFilter, setUserFilter] = useState<string>('all');
-  
+
+  // Carregamento inicial do Banco de Dados
+  useEffect(() => {
+    const loadAllData = async () => {
+      try {
+        const [clientsData, sectorsData, usersData] = await Promise.all([
+          api.get('/clientes.php'),
+          api.get('/setores.php'),
+          api.get('/usuarios.php')
+        ]);
+        setClients(clientsData || []);
+        setDbSectors(sectorsData || []);
+        setDbUsers(usersData || []);
+      } catch (error) {
+        toast({ title: "Erro de Conexão", description: "Não foi possível carregar os dados do XAMPP.", variant: "destructive" });
+      }
+    };
+    loadAllData();
+  }, []);
+
   // Detalhes Modal State
   const [viewingClientDetails, setViewingClientDetails] = useState<Client | null>(null);
   const [viewingFile, setViewingFile] = useState<string | null>(null);
@@ -100,7 +124,7 @@ const AdminDashboard: React.FC = () => {
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -127,7 +151,6 @@ const AdminDashboard: React.FC = () => {
   const formatCPF = (value: string) => value.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})/, '$1-$2').replace(/(-\d{2})\d+?$/, '$1');
   const formatPhone = (value: string) => value.replace(/\D/g, '').replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').replace(/(-\d{4})\d+?$/, '$1');
 
-  // Helper para formatar Date para input datetime-local
   const toInputDate = (date: Date) => {
     try {
       return date.toISOString().slice(0, 16);
@@ -198,58 +221,48 @@ const AdminDashboard: React.FC = () => {
     setIsFormOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     let finalUserId = formData.userId;
-    // Supervisor: Se não selecionado, assume ele mesmo
-    if (!finalUserId && isSupervisor && user?.id) {
-        finalUserId = user.id;
-    }
-    // Admin: Se não selecionado, assume ele mesmo (Admin)
-    if (!finalUserId && isAdmin && user?.id) {
+    if (!finalUserId && (isSupervisor || isAdmin) && user?.id) {
         finalUserId = user.id;
     }
 
-    // Validação: Só impede se não tiver ID e não for um dos casos acima
     if (!finalUserId) {
          toast({ title: "Erro", description: "Não foi possível definir o responsável.", variant: "destructive" });
          return;
     }
 
-    // Processa datas customizadas (se admin) ou usa atuais
     const finalCreatedAt = isAdmin && formData.createdAt ? new Date(formData.createdAt) : (editingClient?.createdAt || new Date());
     const finalUpdatedAt = isAdmin && formData.updatedAt ? new Date(formData.updatedAt) : new Date();
 
-    if (editingClient) {
-        // EDITAR
-        setClients((prev) => prev.map((c) => c.id === editingClient.id ? { 
-            ...c, 
-            ...formData,
-            userId: finalUserId,
-            imageUrl: filePreview || undefined, 
-            createdAt: finalCreatedAt,
-            updatedAt: finalUpdatedAt 
-        } : c));
-        toast({ title: 'Cliente atualizado com sucesso!' });
-    } else {
-        // CRIAR
-        const newClient: Client = {
-            id: String(Date.now()),
-            ...formData,
-            userId: finalUserId,
-            sectorId: formData.sectorId, 
-            imageUrl: filePreview || undefined,
-            createdAt: finalCreatedAt,
-            updatedAt: finalUpdatedAt,
-        };
-        setClients((prev) => [newClient, ...prev]);
-        toast({ title: 'Cliente cadastrado com sucesso!' });
+    const payload = {
+        ...formData,
+        id: editingClient?.id,
+        userId: finalUserId,
+        imageUrl: filePreview,
+        createdAt: finalCreatedAt.toISOString(),
+        updatedAt: finalUpdatedAt.toISOString()
+    };
+
+    try {
+        if (editingClient) {
+            await api.post('/clientes.php?action=update', payload);
+            toast({ title: 'Sucesso', description: 'Cliente atualizado no banco.' });
+        } else {
+            await api.post('/clientes.php?action=create', payload);
+            toast({ title: 'Sucesso', description: 'Cliente cadastrado no banco.' });
+        }
+        
+        // Recarrega a lista do banco após salvar
+        const updatedClients = await api.get('/clientes.php');
+        setClients(updatedClients || []);
+        setIsFormOpen(false);
+        setFilePreview(null);
+    } catch (err) {
+        toast({ title: "Erro ao salvar", description: "Verifique a API PHP.", variant: "destructive" });
     }
-    
-    setIsFormOpen(false);
-    setFilePreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const copyToClipboard = (text: string, label: string) => {
@@ -312,7 +325,7 @@ const AdminDashboard: React.FC = () => {
   };
 
   const statsSource = isSupervisor ? clients.filter(c => c.sectorId === user.sectorId) : clients;
-  
+
   const stats = [
     { title: 'Total', value: statsSource.length, icon: Users, color: 'text-primary', bg: 'bg-primary/10', borderClass: 'border-l-primary' },
     { title: 'Aprovados', value: statsSource.filter((c) => c.status === 'approved').length, icon: UserCheck, color: 'text-emerald-600', bg: 'bg-emerald-100', borderClass: 'border-l-emerald-500' },
@@ -330,10 +343,10 @@ const AdminDashboard: React.FC = () => {
 
   const getSectorName = (id: string) => {
     if (!id) return 'Admin';
-    return mockSectors.find(s => s.id === id)?.name || 'N/A';
+    return dbSectors.find(s => s.id === id)?.name || 'N/A';
   };
-  
-  const getUserName = (id: string) => mockUsers.find(u => u.id === id)?.name || 'N/A';
+
+  const getUserName = (id: string) => dbUsers.find(u => u.id === id)?.name || 'N/A';
 
   return (
     <DashboardLayout>
@@ -348,7 +361,7 @@ const AdminDashboard: React.FC = () => {
               {isSupervisor ? 'Visualize os clientes do seu setor' : 'Gerencie clientes, setores e usuários do sistema'}
             </p>
           </div>
-          
+
           <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
             <DialogTrigger asChild>
               <Button variant="hero" className="shadow-lg h-10" onClick={() => handleOpenForm()}>
@@ -359,32 +372,32 @@ const AdminDashboard: React.FC = () => {
               <DialogHeader>
                 <DialogTitle>{editingClient ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}</DialogTitle>
                 <DialogDescription>
-                  {editingClient 
-                    ? (isSupervisor ? "Supervisores podem alterar Status e Consultor." : "Edite os dados do cliente.") 
+                  {editingClient 
+                    ? (isSupervisor ? "Supervisores podem alterar Status e Consultor." : "Edite os dados do cliente.") 
                     : "Preencha os dados abaixo."}
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
-                
+
                 {/* --- ÁREA EXCLUSIVA ADMIN: EDIÇÃO DE DATAS --- */}
-                {isAdmin && editingClient &&(
+                {isAdmin && editingClient && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="createdAt">Data de Criação</Label>
-                      <Input 
-                        id="createdAt" 
+                      <Input 
+                        id="createdAt" 
                         type="datetime-local"
-                        value={formData.createdAt} 
-                        onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })} 
+                        value={formData.createdAt} 
+                        onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })} 
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="updatedAt">Data de Alteração</Label>
-                      <Input 
-                        id="updatedAt" 
+                      <Input 
+                        id="updatedAt" 
                         type="datetime-local"
-                        value={formData.updatedAt} 
-                        onChange={(e) => setFormData({ ...formData, updatedAt: e.target.value })} 
+                        value={formData.updatedAt} 
+                        onChange={(e) => setFormData({ ...formData, updatedAt: e.target.value })} 
                       />
                     </div>
                   </div>
@@ -393,22 +406,22 @@ const AdminDashboard: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Nome</Label>
-                    <Input 
-                      id="name" 
-                      value={formData.name} 
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })} 
-                      required 
+                    <Input 
+                      id="name" 
+                      value={formData.name} 
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })} 
+                      required 
                       placeholder="Nome completo"
                       disabled={!!editingClient && isSupervisor}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="cpf">CPF</Label>
-                    <Input 
-                      id="cpf" 
-                      value={formData.cpf} 
-                      onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })} 
-                      required 
+                    <Input 
+                      id="cpf" 
+                      value={formData.cpf} 
+                      onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })} 
+                      required 
                       maxLength={14}
                       placeholder="000.000.000-00"
                       disabled={!!editingClient && isSupervisor}
@@ -416,21 +429,21 @@ const AdminDashboard: React.FC = () => {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
-                    <Input 
-                      id="email" 
+                    <Input 
+                      id="email" 
                       type="email"
-                      value={formData.email} 
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
+                      value={formData.email} 
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
                       placeholder="email@exemplo.com"
                       disabled={!!editingClient && isSupervisor}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="phone">Telefone</Label>
-                    <Input 
-                      id="phone" 
-                      value={formData.phone} 
-                      onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })} 
+                    <Input 
+                      id="phone" 
+                      value={formData.phone} 
+                      onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })} 
                       maxLength={15}
                       placeholder="(00) 00000-0000"
                       disabled={!!editingClient && isSupervisor}
@@ -442,8 +455,8 @@ const AdminDashboard: React.FC = () => {
                 {editingClient && (
                   <div className="space-y-2 bg-muted/50 p-4 rounded-lg border border-border shadow-sm">
                     <Label htmlFor="status" className="flex items-center gap-2 font-semibold">Status</Label>
-                    <Select 
-                      value={formData.status} 
+                    <Select 
+                      value={formData.status} 
                       onValueChange={(val: any) => setFormData({ ...formData, status: val })}
                     >
                       <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
@@ -458,12 +471,12 @@ const AdminDashboard: React.FC = () => {
 
                 {/* ÁREA DE VÍNCULO (SETOR E CONSULTOR) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  
+
                   {/* Setor Opcional para Admin */}
                   {!isSupervisor && (
                     <div className="space-y-2">
                         <Label htmlFor="sector">Setor</Label>
-                        <Select 
+                        <Select 
                         value={formData.sectorId}
                         onValueChange={(val) => setFormData({ ...formData, sectorId: val })}
                         disabled={!!editingClient && isSupervisor}
@@ -472,7 +485,7 @@ const AdminDashboard: React.FC = () => {
                             <SelectValue placeholder={isAdmin ? "Selecione (Opcional)" : "Selecione..."} />
                         </SelectTrigger>
                         <SelectContent>
-                            {mockSectors.map((sector) => (
+                            {dbSectors.map((sector) => (
                             <SelectItem key={sector.id} value={sector.id}>{sector.name}</SelectItem>
                             ))}
                         </SelectContent>
@@ -483,7 +496,7 @@ const AdminDashboard: React.FC = () => {
                   {/* Consultor Opcional para Admin/Supervisor */}
                   <div className={cn("space-y-2", isSupervisor && "sm:col-span-2")}>
                     <Label htmlFor="user">Consultor Responsável</Label>
-                    <Select 
+                    <Select 
                       value={formData.userId}
                       onValueChange={(val) => setFormData({ ...formData, userId: val })}
                     >
@@ -492,7 +505,7 @@ const AdminDashboard: React.FC = () => {
                         <SelectValue placeholder={(isAdmin || isSupervisor) ? "Selecione (Opcional)" : "Selecione o consultor..."} />
                       </SelectTrigger>
                       <SelectContent>
-                        {mockUsers
+                        {dbUsers
                             .filter(u => u.role === 'user' && (!isSupervisor || u.sectorId === user.sectorId))
                             .map((user) => (
                           <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
@@ -509,7 +522,7 @@ const AdminDashboard: React.FC = () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="obs">Observações</Label>
-                  <Textarea 
+                  <Textarea 
                     id="obs"
                     value={formData.observations}
                     onChange={(e) => setFormData({ ...formData, observations: e.target.value })}
@@ -593,11 +606,11 @@ const AdminDashboard: React.FC = () => {
               <div className="lg:col-span-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    placeholder="Buscar: Nome, CPF ou ID." 
-                    className="pl-9" 
-                    value={searchTerm} 
-                    onChange={(e) => setSearchTerm(e.target.value)} 
+                  <Input 
+                    placeholder="Buscar: Nome, CPF ou ID." 
+                    className="pl-9" 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)} 
                   />
                 </div>
               </div>
@@ -610,13 +623,13 @@ const AdminDashboard: React.FC = () => {
                   <SelectItem value="rejected">Reprovado</SelectItem>
                 </SelectContent>
               </Select>
-              
+
               {!isSupervisor && (
                 <Select value={sectorFilter} onValueChange={setSectorFilter}>
                   <SelectTrigger><SelectValue placeholder="Setor" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="all">Todos os Setores</SelectItem>
-                    {mockSectors.map((sector) => (
+                    {dbSectors.map((sector) => (
                       <SelectItem key={sector.id} value={sector.id}>{sector.name}</SelectItem>
                     ))}
                   </SelectContent>
@@ -627,7 +640,7 @@ const AdminDashboard: React.FC = () => {
                 <SelectTrigger><SelectValue placeholder="Funcionário" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Todos os Funcionários</SelectItem>
-                  {mockUsers
+                  {dbUsers
                     .filter((u) => u.role === 'user' && (!isSupervisor || u.sectorId === user.sectorId))
                     .map((user) => (
                       <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
@@ -689,7 +702,7 @@ const AdminDashboard: React.FC = () => {
                             <Button variant="ghost" size="icon" onClick={() => setViewingClientDetails(client)} title="Ver Detalhes">
                                 <Eye className="w-4 h-4" />
                             </Button>
-                            
+
                             <Button variant="ghost" size="icon" onClick={() => handleOpenForm(client)} title="Editar" className="text-muted-foreground hover:text-amber-600">
                                 <Edit className="w-4 h-4" />
                             </Button>
@@ -699,7 +712,7 @@ const AdminDashboard: React.FC = () => {
                   ))}
                 </TableBody>
               </Table>
-              
+
               {filteredClients.length === 0 && (
                 <div className="text-center py-12 text-muted-foreground">
                   <Users className="w-12 h-12 mx-auto mb-4 opacity-50" />
@@ -714,19 +727,19 @@ const AdminDashboard: React.FC = () => {
                 <Pagination>
                   <PaginationContent>
                     <PaginationItem>
-                      <PaginationPrevious 
-                        onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)} 
+                      <PaginationPrevious 
+                        onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)} 
                         className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                       />
                     </PaginationItem>
-                    
+
                     {getPageNumbers().map((page, index) => (
                       <PaginationItem key={index}>
                         {page === '...' ? (
                           <PaginationEllipsis />
                         ) : (
-                          <PaginationLink 
-                            isActive={currentPage === page} 
+                          <PaginationLink 
+                            isActive={currentPage === page} 
                             onClick={() => setCurrentPage(page as number)}
                             className={cn("cursor-pointer font-mono font-medium", currentPage === page && "bg-primary text-primary-foreground")}
                           >
@@ -737,8 +750,8 @@ const AdminDashboard: React.FC = () => {
                     ))}
 
                     <PaginationItem>
-                      <PaginationNext 
-                        onClick={() => currentPage < totalPages && setCurrentPage(currentPage + 1)} 
+                      <PaginationNext 
+                        onClick={() => currentPage < totalPages && setCurrentPage(currentPage + 1)} 
                         className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                       />
                     </PaginationItem>
@@ -750,10 +763,10 @@ const AdminDashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* --- DETALHES MODAL (MANTIDO) --- */}
+        {/* --- DETALHES MODAL (MANTIDO EXATAMENTE IGUAL) --- */}
         <Dialog open={!!viewingClientDetails} onOpenChange={() => setViewingClientDetails(null)}>
             <DialogContent className="max-w-4xl p-0 gap-0 overflow-hidden bg-background border border-border shadow-2xl rounded-2xl [&>button]:hidden">
-              
+
               <DialogHeader className="sr-only">
                 <DialogTitle>Detalhes do Cliente</DialogTitle>
                 <DialogDescription>Visualização completa dos dados</DialogDescription>
@@ -763,7 +776,6 @@ const AdminDashboard: React.FC = () => {
                 <div className="flex flex-col h-full">
                     <div className="relative bg-zinc-50/80 dark:bg-zinc-900/50 p-6 border-b border-border/60">
                          <div className="absolute top-4 right-4 z-50">
-                            {/* HOVER VERDE AQUI */}
                             <Button variant="ghost" size="icon" onClick={() => setViewingClientDetails(null)} className="rounded-full bg-zinc-200/50 hover:bg-emerald-500 hover:text-white transition-all shadow-sm w-9 h-9">
                                 <X className="w-5 h-5" />
                             </Button>
@@ -871,9 +883,9 @@ const AdminDashboard: React.FC = () => {
                 </div>
               )}
             </DialogContent>
-          </Dialog>
+        </Dialog>
 
-          <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
+        <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
             <DialogContent className="fixed !left-0 !top-0 !translate-x-0 !translate-y-0 w-screen h-screen max-w-none p-0 bg-emerald-950/90 backdrop-blur-md border-none shadow-none focus:outline-none [&>button]:hidden flex items-center justify-center pointer-events-none z-[100]">
                <DialogTitle className="sr-only">Visualização de Arquivo</DialogTitle>
                <div className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto">
@@ -887,7 +899,6 @@ const AdminDashboard: React.FC = () => {
                      </>
                    )}
                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => { /* Download Logic */ }}><Download className="w-4 h-4" /></Button>
-                   {/* HOVER VERDE AQUI TAMBÉM */}
                    <Button variant="ghost" size="icon" className="text-white hover:bg-emerald-500/80 h-8 w-8 rounded-full" onClick={() => setViewingFile(null)}><X className="w-4 h-4" /></Button>
                  </div>
                  <div className="w-[95vw] h-[90vh] flex items-center justify-center relative mt-8">
@@ -905,7 +916,7 @@ const AdminDashboard: React.FC = () => {
                  </div>
                </div>
             </DialogContent>
-          </Dialog>
+        </Dialog>
       </div>
     </DashboardLayout>
   );

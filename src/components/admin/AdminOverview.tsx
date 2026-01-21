@@ -1,14 +1,7 @@
-/**
- * ARQUIVO: src/components/admin/AdminOverview.tsx
- * * ATUALIZAÇÕES:
- * 1. Números dos cards principais agora são PRETOS (text-black).
- * 2. Card de "Destaque" (Supervisor) alterado de Roxo para AMARELO (Amber).
- */
-
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
+import { useApi } from '@/hooks/useApi';
 import DashboardLayout from '@/components/layout/DashboardLayout';
-import { mockClients, mockUsers, mockSectors } from '@/data/mockData';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Progress } from '@/components/ui/progress';
@@ -37,7 +30,32 @@ import {
 
 const AdminOverview: React.FC = () => {
   const { user } = useAuth();
+  const api = useApi();
   const isSupervisor = user?.role === 'supervisor';
+
+  // --- ESTADOS DE DADOS REAIS ---
+  const [dbClients, setDbClients] = useState<any[]>([]);
+  const [dbUsers, setDbUsers] = useState<any[]>([]);
+  const [dbSectors, setDbSectors] = useState<any[]>([]);
+
+  // Busca dados reais do banco (XAMPP)
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        const [c, u, s] = await Promise.all([
+          api.get('/clientes.php'),
+          api.get('/usuarios.php'),
+          api.get('/setores.php')
+        ]);
+        setDbClients(c || []);
+        setDbUsers(u || []);
+        setDbSectors(s || []);
+      } catch (error) {
+        console.error("Erro ao carregar dados do banco:", error);
+      }
+    };
+    loadDashboardData();
+  }, []);
 
   // --- Estados dos Filtros ---
   const [selectedSector, setSelectedSector] = useState<string>(
@@ -96,7 +114,7 @@ const AdminOverview: React.FC = () => {
 
   // --- Lógica de Filtragem ---
   const filteredData = useMemo(() => {
-    return mockClients.filter(client => {
+    return dbClients.filter(client => {
       // Regra de segurança para supervisor
       const matchSector = isSupervisor 
         ? client.sectorId === user?.sectorId
@@ -122,15 +140,15 @@ const AdminOverview: React.FC = () => {
       
       return matchSector && matchUser && matchStatus && matchDate;
     });
-  }, [selectedSector, selectedUser, selectedStatus, date, isSupervisor, user?.sectorId]);
+  }, [dbClients, selectedSector, selectedUser, selectedStatus, date, isSupervisor, user?.sectorId]);
 
   const availableConsultants = useMemo(() => {
     if (isSupervisor) {
-      return mockUsers.filter(u => u.role === 'user' && u.sectorId === user?.sectorId);
+      return dbUsers.filter(u => u.role === 'user' && u.sectorId === user?.sectorId);
     }
-    if (selectedSector === 'all') return mockUsers.filter(u => u.role === 'user');
-    return mockUsers.filter(u => u.role === 'user' && u.sectorId === selectedSector);
-  }, [selectedSector, isSupervisor, user?.sectorId]);
+    if (selectedSector === 'all') return dbUsers.filter(u => u.role === 'user');
+    return dbUsers.filter(u => u.role === 'user' && u.sectorId === selectedSector);
+  }, [dbUsers, selectedSector, isSupervisor, user?.sectorId]);
 
   // --- Métricas Gerais ---
   const total = filteredData.length;
@@ -155,9 +173,9 @@ const AdminOverview: React.FC = () => {
     });
     const topId = Object.keys(stats).reduce((a, b) => stats[a] > stats[b] ? a : b, '');
     if (!topId) return null;
-    const userData = mockUsers.find(u => u.id === topId);
+    const userData = dbUsers.find(u => u.id === topId);
     return { name: userData?.name.split(' ')[0], count: stats[topId] };
-  }, [filteredData]);
+  }, [filteredData, dbUsers]);
 
   // Lógica: Novos Hoje (Supervisor)
   const newToday = filteredData.filter(c => isSameDay(new Date(c.createdAt), new Date())).length;
@@ -203,7 +221,7 @@ const AdminOverview: React.FC = () => {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Todos Setores</SelectItem>
-                        {mockSectors.map((s) => (
+                        {dbSectors.map((s) => (
                           <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
                         ))}
                       </SelectContent>
@@ -300,7 +318,6 @@ const AdminOverview: React.FC = () => {
               <Users className="h-4 w-4 text-blue-600" />
             </CardHeader>
             <CardContent>
-              {/* ALTERADO: Cor do texto para PRETO */}
               <div className="text-3xl font-bold text-black">{total}</div>
               <p className="text-xs text-muted-foreground">Clientes encontrados</p>
             </CardContent>
@@ -313,7 +330,6 @@ const AdminOverview: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="flex justify-between items-end">
-                {/* ALTERADO: Cor do texto para PRETO */}
                 <div className="text-3xl font-bold text-black">{approved}</div>
                 <div className="text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-1 rounded">
                   {approvedPerc.toFixed(1)}%
@@ -330,7 +346,6 @@ const AdminOverview: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="flex justify-between items-end">
-                {/* ALTERADO: Cor do texto para PRETO */}
                 <div className="text-3xl font-bold text-black">{pending}</div>
                 <div className="text-xs font-medium bg-orange-100 text-orange-700 px-2 py-1 rounded">
                   {pendingPerc.toFixed(1)}%
@@ -347,7 +362,6 @@ const AdminOverview: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="flex justify-between items-end">
-                {/* ALTERADO: Cor do texto para PRETO */}
                 <div className="text-3xl font-bold text-black">{rejected}</div>
                 <div className="text-xs font-medium bg-red-100 text-red-700 px-2 py-1 rounded">
                   {rejectedPerc.toFixed(1)}%
@@ -360,10 +374,9 @@ const AdminOverview: React.FC = () => {
 
         {/* --- CARDS SECUNDÁRIOS --- */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-           
+            
            {/* Card 1: Varia conforme o cargo */}
            {isSupervisor ? (
-             // ALTERADO: Card "Destaque" agora é AMARELO (Amber) em vez de Roxo (Violet)
              <Card className="shadow-sm border-l-4 border-l-amber-500 bg-amber-50/10">
                 <CardHeader className="pb-2">
                   <CardTitle className="text-xs uppercase text-amber-600 font-semibold tracking-wider flex items-center gap-2">
@@ -443,7 +456,7 @@ const AdminOverview: React.FC = () => {
                </CardHeader>
                <CardContent>
                  <div className="text-2xl font-bold">
-                   {selectedSector === 'all' ? mockSectors.length : 1}
+                   {selectedSector === 'all' ? dbSectors.length : 1}
                  </div>
                  <p className="text-xs text-muted-foreground mt-1">Áreas operando neste filtro</p>
                </CardContent>
@@ -470,24 +483,24 @@ const AdminOverview: React.FC = () => {
                       <span className="font-medium text-sm">{client.name}</span>
                       <span className="text-xs text-muted-foreground flex items-center gap-1">
                         <Users className="w-3 h-3" /> 
-                        {mockUsers.find(u => u.id === client.userId)?.name || 'N/A'}
+                        {dbUsers.find(u => u.id === client.userId)?.name || 'N/A'}
                         <span className="mx-1">•</span>
                         {format(new Date(client.createdAt), "dd/MM/yyyy")}
                       </span>
                     </div>
                     <div className="flex items-center gap-3">
-                       {!isSupervisor && (
-                         <span className="text-xs text-muted-foreground hidden sm:inline-block">
-                           {mockSectors.find(s => s.id === client.sectorId)?.name}
-                         </span>
-                       )}
-                       <div className={`px-2 py-1 rounded text-xs font-medium capitalize border
-                         ${client.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 
-                           client.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' : 
-                           'bg-orange-100 text-orange-700 border-orange-200'}`}>
-                         {client.status === 'approved' ? 'Aprovado' : 
-                          client.status === 'rejected' ? 'Reprovado' : 'Pendente'}
-                       </div>
+                        {!isSupervisor && (
+                          <span className="text-xs text-muted-foreground hidden sm:inline-block">
+                            {dbSectors.find(s => s.id === client.sectorId)?.name}
+                          </span>
+                        )}
+                        <div className={`px-2 py-1 rounded text-xs font-medium capitalize border
+                          ${client.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 
+                            client.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' : 
+                            'bg-orange-100 text-orange-700 border-orange-200'}`}>
+                          {client.status === 'approved' ? 'Aprovado' : 
+                           client.status === 'rejected' ? 'Reprovado' : 'Pendente'}
+                        </div>
                     </div>
                   </div>
                 ))}
@@ -518,8 +531,8 @@ const AdminOverview: React.FC = () => {
             <CardContent className="flex-1 overflow-auto max-h-[400px]">
                <div className="space-y-4">
                  {activeConsultantIds.map(userId => {
-                   const user = mockUsers.find(u => u.id === userId);
-                   if (!user) return null;
+                   const uData = dbUsers.find(u => u.id === userId);
+                   if (!uData) return null;
                    const count = filteredData.filter(c => c.userId === userId).length;
                    const userApproved = filteredData.filter(c => c.userId === userId && c.status === 'approved').length;
                    
@@ -527,11 +540,11 @@ const AdminOverview: React.FC = () => {
                      <div key={userId} className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
                           <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                            {user.name.substring(0,2).toUpperCase()}
+                            {uData.name.substring(0,2).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{user.name}</p>
+                          <p className="text-sm font-medium truncate">{uData.name}</p>
                           <div className="flex items-center gap-2 text-xs text-muted-foreground">
                             <span>{count} Clientes</span>
                             <span className="w-1 h-1 rounded-full bg-muted-foreground/40" />

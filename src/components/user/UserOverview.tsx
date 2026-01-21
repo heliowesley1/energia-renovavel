@@ -1,7 +1,7 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
-import { mockClients } from '@/data/mockData';
+import { useApi } from '@/hooks/useApi';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Users, CheckCircle, Clock, TrendingUp, XCircle, Calendar, Zap, ChevronLeft, ChevronRight, Activity, Calendar as CalendarIcon, Eraser, Filter } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -19,7 +19,24 @@ import { format, isSameDay, isSameMonth, subDays, isAfter, startOfDay, endOfDay,
 const UserOverview: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
-  
+  const api = useApi();
+
+  // --- ESTADOS DE DADOS REAIS ---
+  const [clients, setClients] = useState<any[]>([]);
+
+  // Busca dados reais do banco (XAMPP)
+  useEffect(() => {
+    const loadMyDashboard = async () => {
+      try {
+        const data = await api.get('/clientes.php');
+        setClients(data || []);
+      } catch (error) {
+        console.error("Erro ao carregar dashboard do consultor:", error);
+      }
+    };
+    loadMyDashboard();
+  }, []);
+
   // -- ESTADOS DE PAGINAÇÃO --
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 15;
@@ -29,12 +46,14 @@ const UserOverview: React.FC = () => {
   const [customDate, setCustomDate] = useState<{ from: string; to: string }>({ from: '', to: '' });
 
   // -- DADOS E FILTRAGEM --
+  // 1. Pega todos os clientes do usuário
   const allMyClients = useMemo(() => {
-    return mockClients
+    return clients
       .filter(c => c.userId === user?.id)
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [user?.id]);
+  }, [clients, user?.id]);
 
+  // 2. Aplica o filtro de período
   const filteredClients = useMemo(() => {
     return allMyClients.filter(client => {
       const clientDate = new Date(client.createdAt);
@@ -62,17 +81,17 @@ const UserOverview: React.FC = () => {
     setPeriodFilter('all');
     setCustomDate({ from: '', to: '' });
   };
-  
+
   // -- CÁLCULOS ESTATÍSTICOS --
   const total = filteredClients.length;
   const approved = filteredClients.filter(c => c.status === 'approved').length;
   const pending = filteredClients.filter(c => c.status === 'pending').length;
   const rejected = filteredClients.filter(c => c.status === 'rejected').length;
   const efficiency = total > 0 ? ((approved / total) * 100).toFixed(0) : 0;
-  
-  const today = new Date();
-  const createdToday = filteredClients.filter(c => isSameDay(new Date(c.createdAt), today)).length;
-  const createdThisMonth = filteredClients.filter(c => isSameMonth(new Date(c.createdAt), today)).length;
+
+  const todayDate = new Date();
+  const createdToday = filteredClients.filter(c => isSameDay(new Date(c.createdAt), todayDate)).length;
+  const createdThisMonth = filteredClients.filter(c => isSameMonth(new Date(c.createdAt), todayDate)).length;
   const lastClientDate = filteredClients.length > 0 ? format(new Date(filteredClients[0].createdAt), "dd/MM 'às' HH:mm") : '-';
 
   // -- PAGINAÇÃO --
@@ -86,7 +105,7 @@ const UserOverview: React.FC = () => {
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in pb-10">
-        
+
         {/* Cabeçalho com Filtros */}
         <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-4">
           <div>
@@ -95,6 +114,7 @@ const UserOverview: React.FC = () => {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3 w-full xl:w-auto">
+            {/* Filtro de Período */}
             <div className="flex items-center gap-2 bg-background p-1 rounded-lg border shadow-sm">
                 <Select value={periodFilter} onValueChange={setPeriodFilter}>
                 <SelectTrigger className="w-full sm:w-[160px] h-9 border-none shadow-none focus:ring-0"> 
@@ -117,6 +137,7 @@ const UserOverview: React.FC = () => {
                 </SelectContent>
                 </Select>
 
+                {/* Inputs de Data Personalizada (APENAS DIGITAÇÃO) */}
                 {periodFilter === 'custom' && (
                 <div className="flex items-center gap-2 px-2 animate-in fade-in slide-in-from-left-2 border-l">
                     <div className="relative w-[140px]"> 
@@ -141,6 +162,7 @@ const UserOverview: React.FC = () => {
                 </div>
                 )}
 
+                 {/* Botão Limpar Filtro */}
                  {periodFilter !== 'all' && (
                   <Button 
                     variant="ghost" 
@@ -163,7 +185,7 @@ const UserOverview: React.FC = () => {
 
         {/* --- GRID DE CARDS (8 CARDS) --- */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          
+
           {/* Card 1: Total */}
           <Card className="border-l-4 border-l-primary shadow-sm hover:translate-y-[-2px] transition-all">
             <CardHeader className="pb-2">
@@ -172,12 +194,11 @@ const UserOverview: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {/* ALTERADO: text-foreground -> text-black */}
               <div className="text-3xl font-bold text-black">{total}</div>
               <p className="text-xs text-muted-foreground mt-1">Clientes listados</p>
             </CardContent>
           </Card>
-          
+
           {/* Card 2: Aprovados */}
           <Card className="border-l-4 border-l-emerald-500 shadow-sm hover:translate-y-[-2px] transition-all">
             <CardHeader className="pb-2">
@@ -186,7 +207,6 @@ const UserOverview: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {/* ALTERADO: text-emerald-600 -> text-black */}
               <div className="text-3xl font-bold text-black">{approved}</div>
               <p className="text-xs text-muted-foreground mt-1">Vendas concluídas</p>
             </CardContent>
@@ -200,7 +220,6 @@ const UserOverview: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {/* ALTERADO: text-orange-600 -> text-black */}
               <div className="text-3xl font-bold text-black">{pending}</div>
               <p className="text-xs text-muted-foreground mt-1">Em análise</p>
             </CardContent>
@@ -214,7 +233,6 @@ const UserOverview: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {/* ALTERADO: text-red-600 -> text-black */}
               <div className="text-3xl font-bold text-black">{rejected}</div>
               <p className="text-xs text-muted-foreground mt-1">Recusados</p>
             </CardContent>
@@ -299,7 +317,7 @@ const UserOverview: React.FC = () => {
                         <span>{client.cpf}</span>
                       </div>
                     </div>
-                    
+
                     <div className="flex items-center gap-3">
                       <div className={`text-xs font-medium px-2.5 py-0.5 rounded-full border
                         ${client.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 
