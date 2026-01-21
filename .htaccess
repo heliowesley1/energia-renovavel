@@ -1,0 +1,12 @@
+<IfModule mod_rewrite.c>
+  RewriteEngine On
+  RewriteBase /energia_renovavel/
+
+  # Se o arquivo físico existir, ignore as regras abaixo
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
+
+  # Redireciona tudo para o index.html (SPA)
+  RewriteRule ^ index.html [L]
+</IfModule>
