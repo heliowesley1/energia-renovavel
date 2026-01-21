@@ -1,6 +1,13 @@
+/**
+ * ARQUIVO: src/components/user/UserDashboard.tsx
+ * ATUALIZAÇÕES:
+ * 1. Persistência: Integrado com useApi para evitar duplicação e salvar anexos.
+ * 2. Layout: Mantido 3 colunas e Modal max-w-4xl conforme solicitado.
+ */
+
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useApi } from '@/hooks/useApi'; // Adicionado
+import { useApi } from '@/hooks/useApi'; // Adicionado para persistência real
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import type { Client } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -45,7 +52,7 @@ import {
   ChevronRight,
   Search,
   Filter,
-  Calendar as CalendarIcon,
+  CalendarIcon,
   Eraser,
   ZoomIn,
   ZoomOut,
@@ -71,30 +78,30 @@ const UserDashboard: React.FC = () => {
   const { toast } = useToast();
   const api = useApi(); // Instância da API
   
-  // --- ESTADO INICIAL ALTERADO PARA BUSCAR DO BANCO ---
+  // Alterado para carregar do banco de dados real
   const [clients, setClients] = useState<Client[]>([]);
 
+  const loadData = async () => {
+    try {
+      const data = await api.get('/clientes.php');
+      const myClients = (data || []).filter((c: any) => c.userId === user?.id);
+      setClients(myClients);
+    } catch (error) {
+      toast({ title: "Erro de Conexão", description: "Falha ao carregar dados do banco.", variant: "destructive" });
+    }
+  };
+
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const data = await api.get('/clientes.php');
-        // Filtra para exibir apenas os clientes do consultor logado
-        const myClients = (data || []).filter((c: any) => c.userId === user?.id);
-        setClients(myClients);
-      } catch (error) {
-        toast({ title: "Erro de Conexão", description: "Falha ao carregar dados do banco.", variant: "destructive" });
-      }
-    };
     loadData();
   }, [user?.id]);
 
-  // --- MANTIDAS TODAS AS TUAS VARIÁVEIS DE ESTADO ---
+  // --- ESTADOS DOS FILTROS ---
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [periodFilter, setPeriodFilter] = useState('all');
   const [customDate, setCustomDate] = useState<{ from: string; to: string }>({ from: '', to: '' });
 
-  // --- MANTIDA TODA A TUA LÓGICA DE FILTRAGEM ---
+  // --- LÓGICA DE FILTRAGEM E ORDENAÇÃO ---
   const filteredClients = useMemo(() => {
     const filtered = clients.filter(client => {
       const termLower = searchTerm.toLowerCase();
@@ -137,6 +144,7 @@ const UserDashboard: React.FC = () => {
     return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [clients, searchTerm, statusFilter, periodFilter, customDate]);
 
+  // --- LIMPAR FILTROS ---
   const clearFilters = () => {
     setSearchTerm('');
     setStatusFilter('all');
@@ -144,6 +152,7 @@ const UserDashboard: React.FC = () => {
     setCustomDate({ from: '', to: '' });
   };
 
+  // --- PAGINAÇÃO ---
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
   const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
@@ -174,6 +183,7 @@ const UserDashboard: React.FC = () => {
 
   useEffect(() => { setCurrentPage(1); }, [searchTerm, statusFilter, periodFilter, customDate]);
 
+  // --- ESTADOS DE INTERFACE ---
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [viewingClientDetails, setViewingClientDetails] = useState<Client | null>(null);
@@ -197,21 +207,62 @@ const UserDashboard: React.FC = () => {
   const copyToClipboard = (text: string, label: string) => {
     if(!text) return;
     navigator.clipboard.writeText(text);
-    toast({ title: "Copiado!", description: `${label} copiado.`, duration: 2000 });
+    toast({ title: "Copiado!", description: `${label} copiado para a área de transferência.`, duration: 2000 });
+  };
+
+  const handleDownload = () => {
+    if (!viewingFile) return;
+    try {
+        const arr = viewingFile.split(',');
+        const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/octet-stream';
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) { u8arr[n] = bstr.charCodeAt(n); }
+        const blob = new Blob([u8arr], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `anexo-cliente-${Date.now()}.${mime.includes('pdf') ? 'pdf' : 'png'}`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        toast({ title: 'Download iniciado' });
+    } catch (e) { console.error(e); }
+  };
+
+  const handleOpenNewTab = () => {
+    if (!viewingFile) return;
+    try {
+        const arr = viewingFile.split(',');
+        const mime = arr[0].match(/:(.*?);/)?.[1] || 'application/pdf';
+        const bstr = atob(arr[1]);
+        let n = bstr.length;
+        const u8arr = new Uint8Array(n);
+        while (n--) { u8arr[n] = bstr.charCodeAt(n); }
+        const blob = new Blob([u8arr], { type: mime });
+        window.open(URL.createObjectURL(blob), '_blank');
+    } catch (e) { console.error(e); }
+  };
+
+  const resetForm = () => {
+    setFormData({ name: '', email: '', cpf: '', phone: '', observations: '', status: 'pending' });
+    setFilePreview(null);
+    setEditingClient(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleOpenDialog = (client?: Client) => {
     if (client) {
       setEditingClient(client);
       setFormData({
-        name: client.name, email: client.email, cpf: client.cpf, phone: client.phone,
+        name: client.name, email: client.email || '', cpf: client.cpf, phone: client.phone || '',
         observations: client.observations || '', status: client.status,
       });
       setFilePreview(client.imageUrl || null);
     } else {
-      setFormData({ name: '', email: '', cpf: '', phone: '', observations: '', status: 'pending' });
-      setFilePreview(null);
-      setEditingClient(null);
+      resetForm();
     }
     setIsDialogOpen(true);
   };
@@ -219,19 +270,29 @@ const UserDashboard: React.FC = () => {
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
+      const maxSize = 20 * 1024 * 1024;
+      if (file.size > maxSize) {
+        toast({ title: "Arquivo muito grande", description: "O tamanho máximo é 20MB.", variant: "destructive" });
+        return;
+      }
       const reader = new FileReader();
       reader.onloadend = () => setFilePreview(reader.result as string);
       reader.readAsDataURL(file);
     }
   };
 
-  // --- SUBMISSÃO ALTERADA PARA API ---
+  const removeFile = () => {
+    setFilePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // --- SUBMISSÃO CORRIGIDA PARA PERSISTÊNCIA REAL ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const payload = {
         ...formData,
-        id: editingClient?.id,
-        imageUrl: filePreview,
+        id: editingClient?.id, // ID enviado para o PHP detectar UPDATE e não duplicar
+        imageUrl: filePreview, // Envia o anexo em Base64
         userId: user?.id,
         sectorId: user?.sectorId
     };
@@ -239,21 +300,29 @@ const UserDashboard: React.FC = () => {
     try {
       if (editingClient) {
         await api.post('/clientes.php?action=update', payload);
-        toast({ title: 'Cliente atualizado no banco!' });
+        toast({ title: 'Cliente atualizado!' });
       } else {
         await api.post('/clientes.php?action=create', payload);
-        toast({ title: 'Cliente criado com sucesso!' });
+        toast({ title: 'Cliente cadastrado' });
       }
-      // Recarregar
-      const data = await api.get('/clientes.php');
-      setClients((data || []).filter((c: any) => c.userId === user?.id));
+      await loadData(); // Recarrega a lista do banco
       setIsDialogOpen(false);
+      resetForm();
     } catch (err) {
       toast({ title: "Erro ao salvar", variant: "destructive" });
     }
   };
 
-  // --- MANTIDO TODO O TEU JSX ORIGINAL (MODAIS, TABELAS, ZOOM) ---
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'approved': return <Badge variant="default" className="bg-emerald-600 hover:bg-emerald-700 border-none shadow-sm">Aprovado</Badge>;
+      case 'rejected': return <Badge variant="destructive" className="bg-red-600 hover:bg-red-700 border-none shadow-sm">Reprovado</Badge>;
+      default: return <Badge variant="secondary" className="bg-amber-100 text-amber-800 hover:bg-amber-200 border-none shadow-sm">Pendente</Badge>;
+    }
+  };
+
+  const isPdf = (dataUrl: string) => dataUrl?.startsWith('data:application/pdf') || dataUrl?.endsWith('.pdf');
+
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in">
@@ -262,95 +331,284 @@ const UserDashboard: React.FC = () => {
             <h1 className="text-3xl font-display font-bold text-foreground">Gerenciar Meus Clientes</h1>
             <p className="text-muted-foreground mt-1">Lista completa dos cadastros</p>
           </div>
+          
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button variant="hero" onClick={() => handleOpenDialog()} className="shadow-lg hover:shadow-xl transition-all">
                 <Plus className="w-4 h-4 mr-2" /> Novo Cliente
               </Button>
             </DialogTrigger>
-            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-               {/* Todo o teu form original de 800 linhas aqui */}
-               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
+            
+            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" onOpenAutoFocus={(e) => e.preventDefault()}>
+              <DialogHeader>
+                <DialogTitle className="text-2xl">{editingClient ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}</DialogTitle>
+                <DialogDescription>{!editingClient && 'Preencha os dados abaixo. Nome e CPF são obrigatórios.'}</DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSubmit} className="space-y-4 mt-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-2"><Label>Nome</Label><Input value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required disabled={!!editingClient} /></div>
-                  <div className="space-y-2"><Label>CPF</Label><Input value={formData.cpf} onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })} required maxLength={14} disabled={!!editingClient} /></div>
+                  <div className="space-y-2">
+                    <Label htmlFor="name">Nome</Label>
+                    <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required placeholder="Nome completo" disabled={!!editingClient} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="cpf">CPF</Label>
+                    <Input id="cpf" value={formData.cpf} onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })} required placeholder="000.000.000-00" maxLength={14} disabled={!!editingClient} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="email@exemplo.com" disabled={!!editingClient} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="phone">Telefone</Label>
+                    <Input id="phone" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })} placeholder="(00) 00000-0000" maxLength={15} disabled={!!editingClient} />
+                  </div>
                 </div>
+
                 {editingClient && (
                   <div className="space-y-2 bg-muted/50 p-4 rounded-lg border border-border shadow-sm">
-                    <Label className="font-semibold">Status</Label>
-                    <Select value={formData.status} onValueChange={(v: any) => setFormData({ ...formData, status: v })} disabled={isFinalized}>
+                    <Label htmlFor="status" className="flex items-center gap-2 font-semibold">Status</Label>
+                    <Select value={formData.status} onValueChange={(value: any) => setFormData({ ...formData, status: value })} disabled={isFinalized}>
                       <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
-                      <SelectContent><SelectItem value="pending">Pendente</SelectItem><SelectItem value="approved">Aprovado</SelectItem><SelectItem value="rejected">Reprovado</SelectItem></SelectContent>
+                      <SelectContent>
+                        <SelectItem value="pending">Pendente</SelectItem>
+                        <SelectItem value="approved">Aprovado</SelectItem>
+                        <SelectItem value="rejected">Reprovado</SelectItem>
+                      </SelectContent>
                     </Select>
                   </div>
                 )}
-                <div className="space-y-2"><Label>Observações</Label><Textarea value={formData.observations} onChange={(e) => setFormData({ ...formData, observations: e.target.value })} /></div>
+
                 <div className="space-y-2">
-                    <Label>Anexo (Máx. 20MB)</Label>
-                    <div className="border border-dashed rounded-lg p-4 bg-muted/20">
-                        {!filePreview ? (
-                            <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} className="w-full"><Upload className="w-4 h-4 mr-2" /> Anexar Arquivo</Button>
-                        ) : (
-                            <div className="relative group w-full">
-                                <div className={cn("relative w-full rounded-lg overflow-hidden border bg-background flex items-center justify-center", isPdf(filePreview) ? "h-24" : "h-40")}>
-                                    {isPdf(filePreview) ? <FileText className="w-10 h-10 text-red-500" /> : <img src={filePreview} className="w-full h-full object-contain" />}
-                                </div>
-                                <Button type="button" variant="destructive" size="sm" className="mt-2 w-full" onClick={() => setFilePreview(null)}><X className="w-3 h-3 mr-1" /> Remover</Button>
-                            </div>
-                        )}
-                        <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleFileUpload} />
-                    </div>
+                  <Label htmlFor="observations">Observações</Label>
+                  <Textarea id="observations" value={formData.observations} onChange={(e) => setFormData({ ...formData, observations: e.target.value })} placeholder="Informações adicionais..." />
                 </div>
-                <DialogFooter><Button type="submit" variant="hero">{editingClient ? 'Salvar' : 'Cadastrar'}</Button></DialogFooter>
-               </form>
+
+                <div className="space-y-2">
+                  <Label>Anexo (Máx. 20MB)</Label>
+                  <div className="border border-dashed rounded-lg p-4 bg-muted/20 hover:bg-muted/40 transition-colors">
+                    <div className="flex flex-col items-center gap-3">
+                      {!filePreview ? (
+                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} className="w-full">
+                            <Upload className="w-4 h-4 mr-2" /> Anexar Arquivo
+                        </Button>
+                      ) : (
+                        <div className="relative group w-full">
+                          <div className={cn("relative w-full rounded-lg overflow-hidden border bg-background flex items-center justify-center", isPdf(filePreview) ? "h-24" : "h-40")}>
+                            {isPdf(filePreview) ? (
+                              <div className="flex flex-col items-center text-red-500">
+                                <FileText className="w-10 h-10" />
+                                <span className="text-xs font-medium text-muted-foreground mt-2">Documento PDF</span>
+                              </div>
+                            ) : (
+                              <img src={filePreview} alt="Preview" className="w-full h-full object-contain" />
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between mt-2">
+                            <span className="text-xs text-emerald-600 font-medium flex items-center">
+                              {isPdf(filePreview) ? <FileText className="w-3 h-3 mr-1" /> : <ImageIcon className="w-3 h-3 mr-1" />} Arquivo anexado
+                            </span>
+                            <Button type="button" variant="destructive" size="sm" className="h-7 text-xs" onClick={removeFile}><X className="w-3 h-3 mr-1" /> Remover</Button>
+                          </div>
+                        </div>
+                      )}
+                      <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleFileUpload} />
+                    </div>
+                  </div>
+                </div>
+
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
+                  <Button type="submit" variant="hero">{editingClient ? 'Salvar' : 'Cadastrar'}</Button>
+                </DialogFooter>
+              </form>
             </DialogContent>
           </Dialog>
+
+          {/* --- DIALOG DE DETALHES (OLHO) --- */}
+          <Dialog open={!!viewingClientDetails} onOpenChange={() => setViewingClientDetails(null)}>
+            <DialogContent className="max-w-4xl p-0 gap-0 overflow-hidden bg-background border border-border shadow-2xl rounded-2xl [&>button]:hidden">
+              {viewingClientDetails && (
+                <div className="flex flex-col h-full">
+                    <div className="relative bg-zinc-50/80 dark:bg-zinc-900/50 p-6 border-b border-border/60">
+                         <div className="absolute top-4 right-4 z-50">
+                            <Button variant="ghost" size="icon" onClick={() => setViewingClientDetails(null)} className="rounded-full bg-zinc-200/50 hover:bg-red-500 hover:text-white transition-all shadow-sm w-9 h-9" title="Fechar Detalhes"><X className="w-5 h-5" /></Button>
+                         </div>
+                         <div className="absolute top-5 right-16">{getStatusBadge(viewingClientDetails.status)}</div>
+                         <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+                            <div className="text-center sm:text-left space-y-1 mt-1">
+                                <h2 className="text-2xl font-bold tracking-tight text-foreground">{viewingClientDetails.name}</h2>
+                                <p className="text-sm text-muted-foreground flex items-center justify-center sm:justify-start gap-1"><span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-xs">ID: {viewingClientDetails.id}</span></p>
+                            </div>
+                         </div>
+                    </div>
+
+                    <div className="p-6 space-y-8">
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="group relative p-3 rounded-xl border bg-card hover:bg-zinc-50/80 transition-all cursor-pointer shadow-sm hover:shadow-md hover:border-zinc-300" onClick={() => copyToClipboard(viewingClientDetails.email || '', 'Email')}>
+                                <div className="flex items-center gap-2 mb-1.5 text-muted-foreground group-hover:text-primary transition-colors"><Mail className="w-4 h-4" /><span className="text-xs font-medium uppercase tracking-wider">Email</span></div>
+                                <p className="text-sm font-semibold text-foreground break-all">{viewingClientDetails.email || '-'}</p>
+                                <Copy className="w-3 h-3 absolute top-3 right-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                            </div>
+                            <div className="group relative p-3 rounded-xl border bg-card hover:bg-zinc-50/80 transition-all cursor-pointer shadow-sm hover:shadow-md hover:border-zinc-300" onClick={() => copyToClipboard(viewingClientDetails.phone || '', 'Telefone')}>
+                                <div className="flex items-center gap-2 mb-1.5 text-muted-foreground group-hover:text-primary transition-colors"><Phone className="w-4 h-4" /><span className="text-xs font-medium uppercase tracking-wider">Telefone</span></div>
+                                <p className="text-sm font-semibold truncate text-foreground">{viewingClientDetails.phone || '-'}</p>
+                                <Copy className="w-3 h-3 absolute top-3 right-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                            </div>
+                            <div className="group relative p-3 rounded-xl border bg-card hover:bg-zinc-50/80 transition-all cursor-pointer shadow-sm hover:shadow-md hover:border-zinc-300" onClick={() => copyToClipboard(viewingClientDetails.cpf, 'CPF')}>
+                                <div className="flex items-center gap-2 mb-1.5 text-muted-foreground group-hover:text-primary transition-colors"><Hash className="w-4 h-4" /><span className="text-xs font-medium uppercase tracking-wider">CPF</span></div>
+                                <p className="text-sm font-semibold truncate text-foreground">{viewingClientDetails.cpf}</p>
+                                <Copy className="w-3 h-3 absolute top-3 right-3 opacity-0 group-hover:opacity-40 transition-opacity" />
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                            <div className="md:col-span-1 border-l-2 border-zinc-100 pl-4 space-y-6 ml-2">
+                                <div className="relative">
+                                    <div className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full bg-zinc-300 border-2 border-background ring-1 ring-zinc-100" />
+                                    <p className="text-xs text-muted-foreground mb-0.5">Criado em</p>
+                                    <p className="text-sm font-medium">{format(new Date(viewingClientDetails.createdAt), "dd/MM/yyyy")}</p>
+                                    <p className="text-xs text-muted-foreground">{format(new Date(viewingClientDetails.createdAt), "HH:mm")}</p>
+                                </div>
+                                <div className="relative">
+                                    <div className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full bg-primary border-2 border-background ring-1 ring-primary/20" />
+                                    <p className="text-xs text-muted-foreground mb-0.5">Última Edição</p>
+                                    <p className="text-sm font-medium">{format(new Date(viewingClientDetails.updatedAt), "dd/MM/yyyy")}</p>
+                                    <p className="text-xs text-muted-foreground">{format(new Date(viewingClientDetails.updatedAt), "HH:mm")}</p>
+                                </div>
+                            </div>
+                            <div className="md:col-span-2 space-y-2">
+                                <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><FileCheck className="w-3.5 h-3.5" /> Observações Internas</Label>
+                                <div className="bg-zinc-50/50 p-4 rounded-xl border border-dashed border-zinc-200 text-sm text-foreground/80 min-h-[100px] leading-relaxed">{viewingClientDetails.observations || <span className="text-muted-foreground/50 italic">Sem observações registradas.</span>}</div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                             <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><ImageIcon className="w-3.5 h-3.5" /> Documento Vinculado</Label>
+                            {viewingClientDetails.imageUrl ? (
+                                <div className="group relative w-full h-24 bg-zinc-50 rounded-xl border overflow-hidden cursor-pointer hover:border-zinc-400 transition-all" onClick={() => setViewingFile(viewingClientDetails.imageUrl!)}>
+                                    {!isPdf(viewingClientDetails.imageUrl) && <div className="absolute inset-0 bg-cover bg-center opacity-20 blur-sm group-hover:scale-105 transition-transform duration-500" style={{ backgroundImage: `url(${viewingClientDetails.imageUrl})` }} />}
+                                    <div className="absolute inset-0 flex items-center justify-between px-6 z-10">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-12 h-12 bg-white rounded-lg shadow-sm flex items-center justify-center text-zinc-400">{isPdf(viewingClientDetails.imageUrl) ? <FileText className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}</div>
+                                            <div><p className="font-semibold text-sm">Visualizar Anexo</p><p className="text-xs text-muted-foreground">Clique para expandir</p></div>
+                                        </div>
+                                        <Button variant="ghost" size="icon" className="rounded-full bg-white/50 hover:bg-white shadow-sm"><ExternalLink className="w-4 h-4" /></Button>
+                                    </div>
+                                </div>
+                            ) : (<div className="w-full h-16 border border-dashed rounded-xl flex items-center justify-center text-xs text-muted-foreground bg-zinc-50/50">Nenhum documento anexado.</div>)}
+                        </div>
+                    </div>
+                    <div className="p-4 bg-zinc-50/50 border-t flex justify-end"><Button variant="outline" onClick={() => setViewingClientDetails(null)} className="rounded-lg px-6">Fechar Ficha</Button></div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
+          {/* --- VISUALIZADOR DE ARQUIVOS --- */}
+          <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
+            <DialogContent className="fixed !left-0 !top-0 !translate-x-0 !translate-y-0 w-screen h-screen max-w-none p-0 bg-emerald-950/90 backdrop-blur-md border-none shadow-none focus:outline-none [&>button]:hidden flex items-center justify-center pointer-events-none z-[100]">
+               <DialogTitle className="sr-only">Visualização do Anexo</DialogTitle>
+               <div className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto">
+                 <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-2 p-2 bg-black/80 backdrop-blur-md rounded-full shadow-2xl border border-white/10">
+                    {!isPdf(viewingFile || '') && (
+                      <><Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.max(0.5, s - 0.25))}><ZoomOut className="w-4 h-4" /></Button>
+                      <span className="text-xs font-medium text-white w-12 text-center select-none">{Math.round(zoomScale * 100)}%</span>
+                      <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.min(3, s + 0.25))}><ZoomIn className="w-4 h-4" /></Button>
+                      <div className="w-px h-4 bg-white/20 mx-1" /></>
+                    )}
+                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={handleDownload}><Download className="w-4 h-4" /></Button>
+                    {isPdf(viewingFile || '') && <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={handleOpenNewTab}><ExternalLink className="w-4 h-4" /></Button>}
+                    <div className="w-px h-4 bg-white/20 mx-1" />
+                    <Button variant="ghost" size="icon" className="text-white hover:bg-red-500/80 h-8 w-8 rounded-full" onClick={() => setViewingFile(null)}><X className="w-4 h-4" /></Button>
+                 </div>
+                 <div className="w-[95vw] h-[90vh] flex items-center justify-center relative mt-8">
+                    {viewingFile && (isPdf(viewingFile) ? (<div className="w-full h-full bg-white rounded-lg overflow-hidden border border-border"><object data={viewingFile} type="application/pdf" className="w-full h-full" /></div>) : (<div className="w-full h-full flex items-center justify-center overflow-auto p-4"><img src={viewingFile} className="rounded-lg shadow-2xl object-contain transition-transform duration-200 max-w-full max-h-full" style={{ transform: `scale(${zoomScale})` }} /></div>))}
+                 </div>
+               </div>
+            </DialogContent>
+          </Dialog>
+
         </div>
 
-        {/* Tabela e Filtros de 800 linhas mantidos integralmente */}
         <Card className="glass-card">
-           <CardHeader>
-              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                 <CardTitle className="text-xl">Lista de Clientes</CardTitle>
-                 <div className="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
-                    <div className="relative w-full sm:w-[250px]">
-                       <Input placeholder="Buscar..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pr-10 h-7 text-xs" />
-                       <Search className="absolute right-3 top-1/2 -translate-y-1/2 w-3 h-3 text-muted-foreground" />
+          <CardHeader>
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <CardTitle className="text-xl">Lista de Clientes</CardTitle>
+              <div className="flex flex-col sm:flex-row gap-3 items-end sm:items-center">
+                <div className="relative w-full sm:w-[250px]">
+                  <Input placeholder="Buscar por Nome ou CPF" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="pr-10 h-7 text-xs" />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground"><Search className="w-3 h-3" /></div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <Select value={periodFilter} onValueChange={setPeriodFilter}>
+                    <SelectTrigger className="w-full sm:w-[150px] h-7 text-xs"> 
+                      <div className="flex items-center gap-2 text-muted-foreground"><CalendarIcon className="w-3 h-3" /><span className="text-foreground truncate">{periodFilter === 'all' ? 'Período' : periodFilter === 'custom' ? 'Personalizado' : periodFilter === 'today' ? 'Hoje' : periodFilter === 'week' ? '7 Dias' : 'Mês'}</span></div>
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todo o período</SelectItem>
+                      <SelectItem value="today">Hoje</SelectItem>
+                      <SelectItem value="week">Últimos 7 dias</SelectItem>
+                      <SelectItem value="month">Este Mês</SelectItem>
+                      <SelectItem value="custom">Personalizado...</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  {periodFilter === 'custom' && (
+                    <div className="flex items-center gap-3 animate-in fade-in slide-in-from-left-2">
+                      <div className="relative w-[140px]"><CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" /><Input type="date" className="w-full h-7 text-xs pl-10 [&::-webkit-calendar-picker-indicator]:hidden" value={customDate.from} onChange={(e) => setCustomDate(prev => ({ ...prev, from: e.target.value }))} /></div>
+                      <span className="text-xs text-muted-foreground">até</span>
+                      <div className="relative w-[140px]"><CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground z-10 pointer-events-none" /><Input type="date" className="w-full h-7 text-xs pl-10 [&::-webkit-calendar-picker-indicator]:hidden" value={customDate.to} onChange={(e) => setCustomDate(prev => ({ ...prev, to: e.target.value }))} /></div>
                     </div>
-                    <Select value={statusFilter} onValueChange={setStatusFilter}>
-                       <SelectTrigger className="w-full sm:w-[130px] h-7 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
-                       <SelectContent><SelectItem value="all">Todos</SelectItem><SelectItem value="pending">Pendentes</SelectItem><SelectItem value="approved">Aprovados</SelectItem><SelectItem value="rejected">Reprovados</SelectItem></SelectContent>
-                    </Select>
-                    <Button variant="ghost" size="icon" onClick={clearFilters} className="h-7 w-7"><Eraser className="w-4 h-4" /></Button>
-                 </div>
+                  )}
+                </div>
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="w-full sm:w-[130px] h-7 text-xs">
+                    <div className="flex items-center gap-2 text-muted-foreground"><Filter className="w-3 h-3" /><span className="text-foreground">{statusFilter === 'all' ? 'Status' : statusFilter === 'approved' ? 'Aprovado' : statusFilter === 'pending' ? 'Pendente' : 'Reprovado'}</span></div>
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="pending">Pendentes</SelectItem>
+                    <SelectItem value="approved">Aprovados</SelectItem>
+                    <SelectItem value="rejected">Reprovados</SelectItem>
+                  </SelectContent>
+                </Select>
+                {(searchTerm !== '' || statusFilter !== 'all' || periodFilter !== 'all') && (<Button variant="ghost" size="icon" onClick={clearFilters} className="h-7 w-7 text-muted-foreground hover:text-destructive hover:bg-destructive/10 shrink-0" title="Limpar Filtros"><Eraser className="w-4 h-4" /></Button>)}
               </div>
-           </CardHeader>
-           <CardContent>
+            </div>
+          </CardHeader>
+
+          <CardContent>
+            <div className="overflow-x-auto">
               <Table>
-                 <TableHeader><TableRow><TableHead>ID</TableHead><TableHead>Cliente</TableHead><TableHead>CPF</TableHead><TableHead>Status</TableHead><TableHead className="text-center">Ações</TableHead></TableRow></TableHeader>
-                 <TableBody>
-                    {paginatedClients.map(c => (
-                       <TableRow key={c.id}>
-                          <TableCell className="text-xs font-semibold">#{c.id}</TableCell>
-                          <TableCell><p className="font-medium">{c.name}</p><p className="text-sm text-muted-foreground">{c.email || '-'}</p></TableCell>
-                          <TableCell className="text-xs">{c.cpf}</TableCell>
-                          <TableCell>
-                             <Badge variant={c.status === 'approved' ? 'default' : 'secondary'}>{c.status}</Badge>
-                          </TableCell>
-                          <TableCell className="text-center">
-                             <div className="flex justify-center gap-1">
-                                <Button variant="ghost" size="icon" onClick={() => setViewingClientDetails(c)}><Eye className="w-4 h-4" /></Button>
-                                <Button variant="ghost" size="icon" onClick={() => handleOpenDialog(c)}><Edit className="w-4 h-4" /></Button>
-                             </div>
-                          </TableCell>
-                       </TableRow>
-                    ))}
-                 </TableBody>
+                <TableHeader><TableRow><TableHead className="w-[80px]">ID</TableHead><TableHead>Cliente</TableHead><TableHead>CPF</TableHead><TableHead>Telefone</TableHead><TableHead>Status</TableHead><TableHead className="text-center w-[140px]">Ações</TableHead></TableRow></TableHeader>
+                <TableBody>
+                  {paginatedClients.length > 0 ? (paginatedClients.map((client) => (
+                      <TableRow key={client.id}>
+                        <TableCell className="text-xs font-semibold text-muted-foreground">#{client.id}</TableCell>
+                        <TableCell><div><p className="font-medium">{client.name}</p><p className="text-sm text-muted-foreground">{client.email || '-'}</p></div></TableCell>
+                        <TableCell className="text-xs text-muted-foreground font-medium">{client.cpf}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground font-medium">{client.phone || '-'}</TableCell>
+                        <TableCell>{getStatusBadge(client.status)}</TableCell>
+                        <TableCell className="text-center"><div className="flex items-center justify-center gap-1"><Button variant="ghost" size="icon" onClick={() => setViewingClientDetails(client)} className="text-foreground hover:text-primary hover:bg-primary/10 h-8 w-8" title="Ver Detalhes"><Eye className="w-4 h-4" /></Button><Button variant="ghost" size="icon" onClick={() => handleOpenDialog(client)} className="text-muted-foreground hover:text-amber-600 hover:bg-amber-50 h-8 w-8" title="Editar"><Edit className="w-4 h-4" /></Button></div></TableCell>
+                      </TableRow>
+                    ))) : (<TableRow><TableCell colSpan={6} className="h-24 text-center text-muted-foreground">Nenhum cliente encontrado.</TableCell></TableRow>)}
+                </TableBody>
               </Table>
-           </CardContent>
+            </div>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-4 border-t">
+                <span className="text-xs text-muted-foreground hidden sm:block">Mostrando {startIndex + 1} a {Math.min(startIndex + itemsPerPage, filteredClients.length)} de {filteredClients.length} resultados</span>
+                <div className="flex items-center gap-1 mx-auto sm:mx-0">
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={handlePrevPage} disabled={currentPage === 1}><ChevronLeft className="h-4 w-4" /></Button>
+                    {getPageNumbers().map((page, index) => (page === '...' ? (<span key={`ellipsis-${index}`} className="px-2 text-xs text-muted-foreground">...</span>) : (<Button key={page} variant={currentPage === page ? "default" : "outline"} size="sm" className={`h-8 w-8 text-xs ${currentPage === page ? 'bg-primary text-primary-foreground' : ''}`} onClick={() => setCurrentPage(page as number)}>{page}</Button>)))}
+                    <Button variant="outline" size="icon" className="h-8 w-8" onClick={handleNextPage} disabled={currentPage >= totalPages}><ChevronRight className="h-4 w-4" /></Button>
+                </div>
+              </div>
+            )}
+          </CardContent>
         </Card>
       </div>
     </DashboardLayout>
   );
 };
+
 export default UserDashboard;
