@@ -1,8 +1,8 @@
 import React from 'react';
+import Login from './Login'; // Importe o seu componente de Login
 
 const Index: React.FC = () => {
-  // Redirect handled by App.tsx - this just shows Login
-  return null;
+  return <Login />;
 };
 
 export default Index;
