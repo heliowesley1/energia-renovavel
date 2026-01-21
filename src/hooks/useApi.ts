@@ -1,5 +1,4 @@
-// src/hooks/useApi.ts
-const API_URL = "http://localhost/energia_renovavel/api"; // URL base do backend
+const API_URL = "http://localhost/energia_renovavel/api";
 
 export const useApi = () => {
   const fetchApi = async (endpoint: string, options?: RequestInit) => {
@@ -20,12 +19,10 @@ export const useApi = () => {
       if (!response.ok) {
         throw new Error(data.message || 'Erro na requisição');
       }
-      
-      // Garante que retorne um array se a resposta for nula para evitar erros no frontend
-      return data || [];
+      return data;
     } catch (error) {
       console.error("Erro na API:", error);
-      return []; // Retorna array vazio em caso de falha
+      return null;
     }
   };
 

@@ -64,33 +64,30 @@ const UserManagement: React.FC = () => {
   const [users, setUsers] = useState<User[]>([]);
   const [dbSectors, setDbSectors] = useState<any[]>([]);
 
-  // Carregamento de dados reais do Banco
+  const loadData = async () => {
+    try {
+      const [uData, sData] = await Promise.all([
+        api.get('/usuarios.php'),
+        api.get('/setores.php')
+      ]);
+      setUsers(uData || []);
+      setDbSectors(sData || []);
+    } catch (error) {
+      toast({ title: "Erro de Conexão", description: "Não foi possível carregar os usuários.", variant: "destructive" });
+    }
+  };
+
   useEffect(() => {
-    const loadData = async () => {
-      try {
-        const [uData, sData] = await Promise.all([
-          api.get('/usuarios.php'),
-          api.get('/setores.php')
-        ]);
-        setUsers(uData || []);
-        setDbSectors(sData || []);
-      } catch (error) {
-        toast({ title: "Erro de Conexão", description: "Não foi possível carregar os usuários.", variant: "destructive" });
-      }
-    };
     loadData();
   }, []);
 
-  // --- FILTROS GERAIS ---
   const [globalNameSearch, setGlobalNameSearch] = useState('');
   const [globalSectorFilter, setGlobalSectorFilter] = useState('all');
   const [globalRoleFilter, setGlobalRoleFilter] = useState('all');
 
-  // --- BUSCA LOCAL POR SETOR ---
   const [sectorSearchOpen, setSectorSearchOpen] = useState<Record<string, boolean>>({});
   const [sectorSearchTerms, setSectorSearchTerms] = useState<Record<string, string>>({});
 
-  // Dialog & Form
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [formData, setFormData] = useState({
@@ -124,7 +121,6 @@ const UserManagement: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     try {
       const payload = {
         ...formData,
@@ -140,9 +136,7 @@ const UserManagement: React.FC = () => {
         toast({ title: 'Novo colaborador criado!' });
       }
 
-      // Refresh data
-      const updatedUsers = await api.get('/usuarios.php');
-      setUsers(updatedUsers || []);
+      await loadData(); // Recarga garantida do banco
       setIsDialogOpen(false);
       resetForm();
     } catch (err) {
@@ -182,7 +176,6 @@ const UserManagement: React.FC = () => {
     return dbSectors.find((s) => s.id === sectorId)?.name || 'N/A';
   };
 
-  // --- LÓGICA DE FILTRAGEM GLOBAL ---
   const getFilteredUsers = () => {
     return users.filter((user) => {
       const matchName = user.name.toLowerCase().includes(globalNameSearch.toLowerCase());
@@ -299,7 +292,6 @@ const UserManagement: React.FC = () => {
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in pb-10">
-        
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">Gestão de Usuários</h1>
