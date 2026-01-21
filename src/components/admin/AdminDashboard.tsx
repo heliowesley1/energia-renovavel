@@ -66,6 +66,7 @@ import {
   ShieldCheck,
   Upload,
   Edit,
+  Eraser,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -92,23 +93,38 @@ const AdminDashboard: React.FC = () => {
   const [userFilter, setUserFilter] = useState<string>('all');
 
   // Carregamento inicial do Banco de Dados
+  const loadAllData = async () => {
+    try {
+      const [clientsData, sectorsData, usersData] = await Promise.all([
+        api.get('/clientes.php'),
+        api.get('/setores.php'),
+        api.get('/usuarios.php')
+      ]);
+      setClients(clientsData || []);
+      setDbSectors(sectorsData || []);
+      setDbUsers(usersData || []);
+    } catch (error) {
+      toast({ title: "Erro de Conexão", description: "Não foi possível carregar os dados.", variant: "destructive" });
+    }
+  };
+
   useEffect(() => {
-    const loadAllData = async () => {
-      try {
-        const [clientsData, sectorsData, usersData] = await Promise.all([
-          api.get('/clientes.php'),
-          api.get('/setores.php'),
-          api.get('/usuarios.php')
-        ]);
-        setClients(clientsData || []);
-        setDbSectors(sectorsData || []);
-        setDbUsers(usersData || []);
-      } catch (error) {
-        toast({ title: "Erro de Conexão", description: "Não foi possível carregar os dados do XAMPP.", variant: "destructive" });
-      }
-    };
     loadAllData();
   }, []);
+
+  // --- FUNÇÃO PARA LIMPAR FILTROS ---
+  const clearFilters = () => {
+    setSearchTerm('');
+    setStatusFilter('all');
+    if (!isSupervisor) {
+      setSectorFilter('all');
+    }
+    setUserFilter('all');
+    toast({ 
+      title: "Filtros limpos", 
+      description: "A listagem foi resetada para o padrão.",
+    });
+  };
 
   // Detalhes Modal State
   const [viewingClientDetails, setViewingClientDetails] = useState<Client | null>(null);
@@ -234,8 +250,8 @@ const AdminDashboard: React.FC = () => {
          return;
     }
 
-    const finalCreatedAt = isAdmin && formData.createdAt ? new Date(formData.createdAt) : (editingClient?.createdAt || new Date());
-    const finalUpdatedAt = isAdmin && formData.updatedAt ? new Date(formData.updatedAt) : new Date();
+    const finalCreatedAt = isAdmin && formData.createdAt ? new Date(formData.createdAt) : (editingClient?.createdAt ? new Date(editingClient.createdAt) : new Date());
+    const finalUpdatedAt = new Date();
 
     const payload = {
         ...formData,
@@ -255,9 +271,7 @@ const AdminDashboard: React.FC = () => {
             toast({ title: 'Sucesso', description: 'Cliente cadastrado no banco.' });
         }
         
-        // Recarrega a lista do banco após salvar
-        const updatedClients = await api.get('/clientes.php');
-        setClients(updatedClients || []);
+        loadAllData();
         setIsFormOpen(false);
         setFilePreview(null);
     } catch (err) {
@@ -372,8 +386,8 @@ const AdminDashboard: React.FC = () => {
               <DialogHeader>
                 <DialogTitle>{editingClient ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}</DialogTitle>
                 <DialogDescription>
-                  {editingClient 
-                    ? (isSupervisor ? "Supervisores podem alterar Status e Consultor." : "Edite os dados do cliente.") 
+                  {editingClient 
+                    ? (isSupervisor ? "Supervisores podem alterar Status e Consultor." : "Edite os dados do cliente.") 
                     : "Preencha os dados abaixo."}
                 </DialogDescription>
               </DialogHeader>
@@ -384,20 +398,20 @@ const AdminDashboard: React.FC = () => {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="createdAt">Data de Criação</Label>
-                      <Input 
-                        id="createdAt" 
+                      <Input 
+                        id="createdAt" 
                         type="datetime-local"
-                        value={formData.createdAt} 
-                        onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })} 
+                        value={formData.createdAt} 
+                        onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })} 
                       />
                     </div>
                     <div className="space-y-2">
                       <Label htmlFor="updatedAt">Data de Alteração</Label>
-                      <Input 
-                        id="updatedAt" 
+                      <Input 
+                        id="updatedAt" 
                         type="datetime-local"
-                        value={formData.updatedAt} 
-                        onChange={(e) => setFormData({ ...formData, updatedAt: e.target.value })} 
+                        value={formData.updatedAt} 
+                        onChange={(e) => setFormData({ ...formData, updatedAt: e.target.value })} 
                       />
                     </div>
                   </div>
@@ -406,22 +420,22 @@ const AdminDashboard: React.FC = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="name">Nome</Label>
-                    <Input 
-                      id="name" 
-                      value={formData.name} 
-                      onChange={(e) => setFormData({ ...formData, name: e.target.value })} 
-                      required 
+                    <Input 
+                      id="name" 
+                      value={formData.name} 
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })} 
+                      required 
                       placeholder="Nome completo"
                       disabled={!!editingClient && isSupervisor}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="cpf">CPF</Label>
-                    <Input 
-                      id="cpf" 
-                      value={formData.cpf} 
-                      onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })} 
-                      required 
+                    <Input 
+                      id="cpf" 
+                      value={formData.cpf} 
+                      onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })} 
+                      required 
                       maxLength={14}
                       placeholder="000.000.000-00"
                       disabled={!!editingClient && isSupervisor}
@@ -429,21 +443,21 @@ const AdminDashboard: React.FC = () => {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
-                    <Input 
-                      id="email" 
+                    <Input 
+                      id="email" 
                       type="email"
-                      value={formData.email} 
-                      onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
+                      value={formData.email} 
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })} 
                       placeholder="email@exemplo.com"
                       disabled={!!editingClient && isSupervisor}
                     />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="phone">Telefone</Label>
-                    <Input 
-                      id="phone" 
-                      value={formData.phone} 
-                      onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })} 
+                    <Input 
+                      id="phone" 
+                      value={formData.phone} 
+                      onChange={(e) => setFormData({ ...formData, phone: formatPhone(e.target.value) })} 
                       maxLength={15}
                       placeholder="(00) 00000-0000"
                       disabled={!!editingClient && isSupervisor}
@@ -455,8 +469,8 @@ const AdminDashboard: React.FC = () => {
                 {editingClient && (
                   <div className="space-y-2 bg-muted/50 p-4 rounded-lg border border-border shadow-sm">
                     <Label htmlFor="status" className="flex items-center gap-2 font-semibold">Status</Label>
-                    <Select 
-                      value={formData.status} 
+                    <Select 
+                      value={formData.status} 
                       onValueChange={(val: any) => setFormData({ ...formData, status: val })}
                     >
                       <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
@@ -476,7 +490,7 @@ const AdminDashboard: React.FC = () => {
                   {!isSupervisor && (
                     <div className="space-y-2">
                         <Label htmlFor="sector">Setor</Label>
-                        <Select 
+                        <Select 
                         value={formData.sectorId}
                         onValueChange={(val) => setFormData({ ...formData, sectorId: val })}
                         disabled={!!editingClient && isSupervisor}
@@ -496,12 +510,11 @@ const AdminDashboard: React.FC = () => {
                   {/* Consultor Opcional para Admin/Supervisor */}
                   <div className={cn("space-y-2", isSupervisor && "sm:col-span-2")}>
                     <Label htmlFor="user">Consultor Responsável</Label>
-                    <Select 
+                    <Select 
                       value={formData.userId}
                       onValueChange={(val) => setFormData({ ...formData, userId: val })}
                     >
                       <SelectTrigger>
-                        {/* UPDATE: PLACEHOLDER CURTO */}
                         <SelectValue placeholder={(isAdmin || isSupervisor) ? "Selecione (Opcional)" : "Selecione o consultor..."} />
                       </SelectTrigger>
                       <SelectContent>
@@ -522,7 +535,7 @@ const AdminDashboard: React.FC = () => {
 
                 <div className="space-y-2">
                   <Label htmlFor="obs">Observações</Label>
-                  <Textarea 
+                  <Textarea 
                     id="obs"
                     value={formData.observations}
                     onChange={(e) => setFormData({ ...formData, observations: e.target.value })}
@@ -606,11 +619,11 @@ const AdminDashboard: React.FC = () => {
               <div className="lg:col-span-2">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input 
-                    placeholder="Buscar: Nome, CPF ou ID." 
-                    className="pl-9" 
-                    value={searchTerm} 
-                    onChange={(e) => setSearchTerm(e.target.value)} 
+                  <input 
+                    placeholder="Buscar: Nome, CPF ou ID." 
+                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pl-9" 
+                    value={searchTerm} 
+                    onChange={(e) => setSearchTerm(e.target.value)} 
                   />
                 </div>
               </div>
@@ -647,6 +660,19 @@ const AdminDashboard: React.FC = () => {
                     ))}
                 </SelectContent>
               </Select>
+
+              {/* BOTÃO DE LIMPAR FILTROS - Estilo idêntico ao dashboard */}
+              <div className="flex items-center justify-end">
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={clearFilters}
+                  className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-10 w-10 rounded-lg border border-input shadow-sm"
+                  title="Limpar Filtros"
+                >
+                  <Eraser className="w-5 h-5" />
+                </Button>
+              </div>
             </div>
           </CardContent>
         </Card>
@@ -727,8 +753,8 @@ const AdminDashboard: React.FC = () => {
                 <Pagination>
                   <PaginationContent>
                     <PaginationItem>
-                      <PaginationPrevious 
-                        onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)} 
+                      <PaginationPrevious 
+                        onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)} 
                         className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                       />
                     </PaginationItem>
@@ -738,8 +764,8 @@ const AdminDashboard: React.FC = () => {
                         {page === '...' ? (
                           <PaginationEllipsis />
                         ) : (
-                          <PaginationLink 
-                            isActive={currentPage === page} 
+                          <PaginationLink 
+                            isActive={currentPage === page} 
                             onClick={() => setCurrentPage(page as number)}
                             className={cn("cursor-pointer font-mono font-medium", currentPage === page && "bg-primary text-primary-foreground")}
                           >
@@ -750,8 +776,8 @@ const AdminDashboard: React.FC = () => {
                     ))}
 
                     <PaginationItem>
-                      <PaginationNext 
-                        onClick={() => currentPage < totalPages && setCurrentPage(currentPage + 1)} 
+                      <PaginationNext 
+                        onClick={() => currentPage < totalPages && setCurrentPage(currentPage + 1)} 
                         className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
                       />
                     </PaginationItem>
@@ -887,21 +913,21 @@ const AdminDashboard: React.FC = () => {
 
         <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
             <DialogContent className="fixed !left-0 !top-0 !translate-x-0 !translate-y-0 w-screen h-screen max-w-none p-0 bg-emerald-950/90 backdrop-blur-md border-none shadow-none focus:outline-none [&>button]:hidden flex items-center justify-center pointer-events-none z-[100]">
-               <DialogTitle className="sr-only">Visualização de Arquivo</DialogTitle>
-               <div className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto">
-                 <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-2 p-2 bg-black/80 backdrop-blur-md rounded-full shadow-2xl border border-white/10">
-                   {!isPdf(viewingFile || '') && (
-                     <>
-                       <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.max(0.5, s - 0.25))}><ZoomOut className="w-4 h-4" /></Button>
-                       <span className="text-xs font-medium text-white w-12 text-center select-none">{Math.round(zoomScale * 100)}%</span>
-                       <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.min(3, s + 0.25))}><ZoomIn className="w-4 h-4" /></Button>
-                       <div className="w-px h-4 bg-white/20 mx-1" />
-                     </>
-                   )}
-                   <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => { /* Download Logic */ }}><Download className="w-4 h-4" /></Button>
-                   <Button variant="ghost" size="icon" className="text-white hover:bg-emerald-500/80 h-8 w-8 rounded-full" onClick={() => setViewingFile(null)}><X className="w-4 h-4" /></Button>
-                 </div>
-                 <div className="w-[95vw] h-[90vh] flex items-center justify-center relative mt-8">
+                <DialogTitle className="sr-only">Visualização de Arquivo</DialogTitle>
+                <div className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto">
+                  <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-2 p-2 bg-black/80 backdrop-blur-md rounded-full shadow-2xl border border-white/10">
+                    {!isPdf(viewingFile || '') && (
+                      <>
+                        <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.max(0.5, s - 0.25))}><ZoomOut className="w-4 h-4" /></Button>
+                        <span className="text-xs font-medium text-white w-12 text-center select-none">{Math.round(zoomScale * 100)}%</span>
+                        <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.min(3, s + 0.25))}><ZoomIn className="w-4 h-4" /></Button>
+                        <div className="w-px h-4 bg-white/20 mx-1" />
+                      </>
+                    )}
+                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => { /* Download Logic */ }}><Download className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" className="text-white hover:bg-emerald-500/80 h-8 w-8 rounded-full" onClick={() => setViewingFile(null)}><X className="w-4 h-4" /></Button>
+                  </div>
+                  <div className="w-[95vw] h-[90vh] flex items-center justify-center relative mt-8">
                     {viewingFile && (
                         isPdf(viewingFile) ? (
                             <div className="w-full h-full bg-white rounded-lg shadow-2xl overflow-hidden border border-border">
@@ -913,8 +939,8 @@ const AdminDashboard: React.FC = () => {
                             </div>
                         )
                     )}
-                 </div>
-               </div>
+                  </div>
+                </div>
             </DialogContent>
         </Dialog>
       </div>
