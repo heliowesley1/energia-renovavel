@@ -13,6 +13,8 @@ if ($method === 'GET') {
             FROM setores s
             LEFT JOIN clientes c ON s.id = c.sectorId
             GROUP BY s.id, s.name
+            ORDER BY totalClients DESC 
+            LIMIT 3
         ";
         
         $stmt = $conn->query($query);

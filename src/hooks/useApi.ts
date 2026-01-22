@@ -1,4 +1,4 @@
-const API_URL = "http://localhost/energia_renovavel/api";
+const API_URL = "https://energiarenovavel.credinowe.com.br/api";
 
 export const useApi = () => {
   const fetchApi = async (endpoint: string, options?: RequestInit) => {

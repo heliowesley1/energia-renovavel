@@ -14,7 +14,7 @@ import {
   X,
   PieChart,
   ClipboardList,
-  Eye
+  Factory // Importado para Usinas
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -37,6 +37,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
     { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios' },
     { href: '/dashboard/clients', icon: Users, label: 'Clientes' },
     { href: '/dashboard/sectors', icon: Building2, label: 'Setores' },
+    { href: '/dashboard/usinas', icon: Factory, label: 'Usinas' }, // Adicionado
     { href: '/dashboard/users', icon: UserCog, label: 'Usuários' },
   ];
 
@@ -51,7 +52,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
     { href: '/dashboard/my-clients', icon: ClipboardList, label: 'Meus Clientes' },
   ];
 
-  // Definição da hierarquia de links baseada no cargo do banco
   let links = userLinks;
   if (user?.role === 'admin') links = adminLinks;
   else if (user?.role === 'supervisor') links = supervisorLinks;
@@ -99,7 +99,7 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
               {user?.name}
             </p>
             <p className="text-xs text-sidebar-foreground/60 capitalize">
-              {user?.role === 'user' ? 'Consultor' : user?.role === 'supervisor' ? 'Supervisor' : 'Administrador'}
+              {user?.role === 'user' ? 'Consultor(a)' : user?.role === 'supervisor' ? 'Supervisor' : 'Administrador'}
             </p>
           </div>
 

@@ -68,7 +68,7 @@ const Reports: React.FC = () => {
       }
     };
     loadReportsData();
-  }, [api]);
+  }, []); // AJUSTE: Removido 'api' para evitar loop infinito de requisições
 
   // --- ESTADOS DOS FILTROS ---
   const [selectedSector, setSelectedSector] = useState<string>(
@@ -173,17 +173,17 @@ const Reports: React.FC = () => {
     return dbUsers.filter(u => u.role === 'user' && u.sectorId === selectedSector);
   }, [dbUsers, selectedSector, isSupervisor, user?.sectorId]);
 
-  // --- CÁLCULOS GERAIS ---
+  // --- CÁLCULOS GERAIS ATUALIZADOS ---
   const totalClients = filteredData.length;
 
   const clientsByStatus = {
-    approved: filteredData.filter(c => c.status === 'approved').length,
+    formalized: filteredData.filter(c => c.status === 'formalized').length, // Ajustado
     pending: filteredData.filter(c => c.status === 'pending').length,
-    rejected: filteredData.filter(c => c.status === 'rejected').length,
+    waiting: filteredData.filter(c => c.status === 'waiting_formalization').length, // Novo
   };
 
   const efficiencyRate = totalClients > 0 
-    ? ((clientsByStatus.approved / totalClients) * 100).toFixed(1) 
+    ? ((clientsByStatus.formalized / totalClients) * 100).toFixed(1) 
     : '0.0';
 
   const newClientsToday = useMemo(() => {
@@ -198,10 +198,10 @@ const Reports: React.FC = () => {
     filteredData.forEach(client => {
       if (stats[client.userId]) {
         stats[client.userId].total += 1;
-        if (client.status === 'approved') stats[client.userId].approved += 1;
+        if (client.status === 'formalized') stats[client.userId].approved += 1; // Ajustado
       }
     });
-    return Object.values(stats).sort((a, b) => b.approved - a.approved).slice(0, 5); 
+    return Object.values(stats).sort((a, b) => b.approved - a.approved).slice(0, 3); 
   }, [filteredData, availableConsultants]);
 
   const sectorPerformance = useMemo(() => {
@@ -212,7 +212,7 @@ const Reports: React.FC = () => {
     filteredData.forEach(client => {
         if (stats[client.sectorId]) {
             stats[client.sectorId].total += 1;
-            if (client.status === 'approved') stats[client.sectorId].approved += 1;
+            if (client.status === 'formalized') stats[client.sectorId].approved += 1; // Ajustado
         }
     });
     return Object.values(stats).sort((a, b) => b.total - a.total).slice(0, 5);
@@ -230,7 +230,7 @@ const Reports: React.FC = () => {
   const getSectorName = (id: string) => dbSectors.find(s => s.id === id)?.name || 'N/A';
   const getUserName = (id: string) => dbUsers.find(u => u.id === id)?.name || 'N/A';
 
-  // --- EXPORTAÇÃO EXCEL CORRIGIDA ---
+  // --- EXPORTAÇÃO EXCEL ATUALIZADA ---
   const handleExportExcel = () => {
     if (filteredData.length === 0) {
       toast({ title: "Atenção", description: "Não há dados para exportar.", variant: "destructive" });
@@ -259,7 +259,7 @@ const Reports: React.FC = () => {
           <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt;">${getSectorName(client.sectorId)}</td>
           <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt;">${getUserName(client.userId)}</td>
           <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt; font-weight: bold; color: #000000;">
-            ${client.status === 'approved' ? 'APROVADO' : client.status === 'rejected' ? 'REPROVADO' : 'PENDENTE'}
+            ${client.status === 'formalized' ? 'FORMALIZADO' : client.status === 'waiting_formalization' ? 'AGUARDANDO FORMALIZAÇÃO' : 'PENDENTE'}
           </td>
           <td style="border: 0.5pt solid #000000; text-align: left; vertical-align: middle; font-size: 8.5pt;">${client.observations || '-'}</td>
         </tr>
@@ -269,9 +269,8 @@ const Reports: React.FC = () => {
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
         <head><meta charset="UTF-8">
         <style>
-          /* Estilo para garantir o preenchimento no Excel */
           .header-cell { 
-            background-color: #C6EFCE !important; /* Verde claro estilo Excel */
+            background-color: #C6EFCE !important; 
             color: #006100; 
             border: 0.5pt solid #000000; 
             font-size: 10pt; 
@@ -303,7 +302,7 @@ const Reports: React.FC = () => {
       link.click();
       URL.revokeObjectURL(url);
       
-      toast({ title: "Sucesso", description: "Exportação em andamento" });
+      toast({ title: "Sucesso", description: "Exportação concluída" });
     } catch (e) { 
       console.error("Erro detalhado na exportação:", e);
       toast({ title: "Erro", description: "Falha na exportação.", variant: "destructive" }); 
@@ -382,9 +381,9 @@ const Reports: React.FC = () => {
                     <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todos Status</SelectItem>
-                      <SelectItem value="approved">Aprovados</SelectItem>
                       <SelectItem value="pending">Pendentes</SelectItem>
-                      <SelectItem value="rejected">Reprovados</SelectItem>
+                      <SelectItem value="formalized">Formalizados</SelectItem>
+                      <SelectItem value="waiting_formalization">Aguardando Formalização</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -425,7 +424,7 @@ const Reports: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="text-3xl font-bold text-foreground">{efficiencyRate}%</div>
-              <p className="text-xs text-muted-foreground mt-1">Taxa de aprovação total</p>
+              <p className="text-xs text-muted-foreground mt-1">Taxa de formalização total</p>
             </CardContent>
           </Card>
 
@@ -455,7 +454,7 @@ const Reports: React.FC = () => {
           <Card className="border-l-4 border-l-emerald-500 flex flex-col hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
-                <Medal className="w-5 h-5 text-emerald-500" /> Ranking Top 5
+                <Medal className="w-5 h-5 text-emerald-500" /> Top 3 Consultores
               </CardTitle>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col justify-center">
@@ -484,7 +483,7 @@ const Reports: React.FC = () => {
                   ))}
                 </div>
               ) : (
-                <div className="text-center text-muted-foreground text-xs py-2">Sem dados de aprovação</div>
+                <div className="text-center text-muted-foreground text-xs py-2">Sem dados de formalização</div>
               )}
             </CardContent>
           </Card>
@@ -507,9 +506,9 @@ const Reports: React.FC = () => {
                 </TableHeader>
                 <TableBody>
                   <TableRow>
-                    <TableCell className="font-medium text-black">Aprovados</TableCell>
-                    <TableCell className="text-right">{clientsByStatus.approved}</TableCell>
-                    <TableCell className="text-right">{totalClients > 0 ? ((clientsByStatus.approved / totalClients) * 100).toFixed(0) : 0}%</TableCell>
+                    <TableCell className="font-medium text-black">Formalizados</TableCell>
+                    <TableCell className="text-right">{clientsByStatus.formalized}</TableCell>
+                    <TableCell className="text-right">{totalClients > 0 ? ((clientsByStatus.formalized / totalClients) * 100).toFixed(0) : 0}%</TableCell>
                   </TableRow>
                   <TableRow>
                     <TableCell className="font-medium text-black">Pendentes</TableCell>
@@ -517,9 +516,9 @@ const Reports: React.FC = () => {
                     <TableCell className="text-right">{totalClients > 0 ? ((clientsByStatus.pending / totalClients) * 100).toFixed(0) : 0}%</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell className="font-medium text-black">Reprovados</TableCell>
-                    <TableCell className="text-right">{clientsByStatus.rejected}</TableCell>
-                    <TableCell className="text-right">{totalClients > 0 ? ((clientsByStatus.rejected / totalClients) * 100).toFixed(0) : 0}%</TableCell>
+                    <TableCell className="font-medium text-black">Aguardando Formalização</TableCell>
+                    <TableCell className="text-right">{clientsByStatus.waiting}</TableCell>
+                    <TableCell className="text-right">{totalClients > 0 ? ((clientsByStatus.waiting / totalClients) * 100).toFixed(0) : 0}%</TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -543,7 +542,7 @@ const Reports: React.FC = () => {
                     <TableRow>
                       <TableHead>{!isSupervisor ? 'Setor' : 'Consultor'}</TableHead>
                       <TableHead className="text-right">Total</TableHead>
-                      <TableHead className="text-right">Aprov.</TableHead>
+                      <TableHead className="text-right">Form.</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -597,8 +596,14 @@ const Reports: React.FC = () => {
                         <TableCell className="text-xs font-semibold">{getSectorName(client.sectorId)}</TableCell>
                         <TableCell className="text-xs">{format(new Date(client.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}</TableCell>
                         <TableCell className="text-right">
-                          <Badge variant="outline" className={cn(client.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : client.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-orange-50 text-orange-700 border-orange-200')}>
-                            {client.status === 'approved' ? 'Aprovado' : client.status === 'rejected' ? 'Reprovado' : 'Pendente'}
+                          <Badge variant="outline" className={cn(
+                            client.status === 'formalized' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
+                            client.status === 'waiting_formalization' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
+                            'bg-orange-50 text-orange-700 border-orange-200'
+                          )}>
+                            {client.status === 'formalized' ? 'Formalizado' : 
+                             client.status === 'waiting_formalization' ? 'Aguardando Formalização' : 
+                             'Pendente'}
                           </Badge>
                         </TableCell>
                       </TableRow>
