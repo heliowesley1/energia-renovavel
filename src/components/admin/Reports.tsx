@@ -68,7 +68,7 @@ const Reports: React.FC = () => {
       }
     };
     loadReportsData();
-  }, []);
+  }, [api]);
 
   // --- ESTADOS DOS FILTROS ---
   const [selectedSector, setSelectedSector] = useState<string>(
@@ -182,16 +182,9 @@ const Reports: React.FC = () => {
     rejected: filteredData.filter(c => c.status === 'rejected').length,
   };
 
-  const clientsBySector = dbSectors.map(sector => ({
-    name: sector.name,
-    count: filteredData.filter(c => c.sectorId === sector.id).length
-  })).filter(s => s.count > 0);
-
   const efficiencyRate = totalClients > 0 
     ? ((clientsByStatus.approved / totalClients) * 100).toFixed(1) 
     : '0.0';
-
-  const topSector = clientsBySector.sort((a, b) => b.count - a.count)[0];
 
   const newClientsToday = useMemo(() => {
     return filteredData.filter(c => isSameDay(new Date(c.createdAt), new Date())).length;
@@ -234,42 +227,41 @@ const Reports: React.FC = () => {
   const startIndex = (currentPage - 1) * itemsPerPage;
   const paginatedClients = filteredData.slice(startIndex, startIndex + itemsPerPage);
 
-  const handleNextPage = () => { if (currentPage < totalPages) setCurrentPage(prev => prev + 1); };
-  const handlePrevPage = () => { if (currentPage > 1) setCurrentPage(prev => prev - 1); };
-
   const getSectorName = (id: string) => dbSectors.find(s => s.id === id)?.name || 'N/A';
   const getUserName = (id: string) => dbUsers.find(u => u.id === id)?.name || 'N/A';
 
-  // --- EXPORTAÇÃO CLEAN, CENTRALIZADA E COMPACTA ---
+  // --- EXPORTAÇÃO EXCEL CORRIGIDA ---
   const handleExportExcel = () => {
     if (filteredData.length === 0) {
       toast({ title: "Atenção", description: "Não há dados para exportar.", variant: "destructive" });
       return;
     }
-    
-    let periodoDesc = "Todo o Período";
-    if (periodPreset === 'today') periodoDesc = "Hoje";
-    else if (periodPreset === '7days') periodoDesc = "Últimos 7 dias";
-    else if (periodPreset === 'month') periodoDesc = "Este Mês";
-    else if (periodPreset === 'custom' && date?.from) {
-      periodoDesc = `${format(date.from, 'dd/MM/yy')} até ${date.to ? format(date.to, 'dd/MM/yy') : format(new Date(), 'dd/MM/yy')}`;
-    }
 
     try {
-      const tableHeaders = ["DATA CADASTRO", "ID", "NOME DO CLIENTE", "CONTATO", "DOCUMENTO", "SETOR", "CONSULTOR", "STATUS", "OBSERVAÇÕES"];
+      const today = new Date();
+      let periodDesc = "Todo o Período";
+      if (periodPreset === 'today') periodDesc = "Hoje";
+      else if (periodPreset === '7days') periodDesc = "Últimos 7 dias";
+      else if (periodPreset === 'month') periodDesc = "Este Mês";
+      else if (periodPreset === 'custom' && date?.from) {
+        periodDesc = `${format(date.from, 'dd/MM/yy')} até ${date.to ? format(date.to, 'dd/MM/yy') : format(today, 'dd/MM/yy')}`;
+      }
+
+      const tableHeaders = ["DATA", "CLIENTE", "CPF", "TELEFONE", "EMAIL", "SETOR", "RESPONSÁVEL", "STATUS", "OBSERVAÇÕES"];
+      
       const tableRows = filteredData.map(client => `
-        <tr style="height: 16pt;">
-          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; font-size: 8pt; color: #475569;">${format(new Date(client.createdAt), "dd/MM/yyyy HH:mm")}</td>
-          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; mso-number-format:'@'; font-size: 8pt; color: #64748b;">#${client.id}</td>
-          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; font-size: 8pt; color: #0f172a;">${client.name.toUpperCase()}</td>
-          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; font-size: 8pt;">${client.phone || '-'}</td>
-          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; mso-number-format:'@'; font-size: 8pt;">${client.cpf}</td>
-          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; font-size: 8pt;">${getSectorName(client.sectorId)}</td>
-          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; font-size: 8pt;">${getUserName(client.userId)}</td>
-          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; font-size: 8pt; color: #000000;">
+        <tr style="height: 18pt;">
+          <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt;">${format(new Date(client.createdAt), "dd/MM/yyyy HH:mm")}</td>
+          <td style="border: 0.5pt solid #000000; text-align: left; vertical-align: middle; font-size: 8.5pt; padding-left: 5px;">${client.name.toUpperCase()}</td>
+          <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; mso-number-format:'@'; font-size: 8.5pt;">${client.cpf}</td>
+          <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt;">${client.phone || '-'}</td>
+          <td style="border: 0.5pt solid #000000; text-align: left; vertical-align: middle; font-size: 8.5pt;">${client.email || '-'}</td>
+          <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt;">${getSectorName(client.sectorId)}</td>
+          <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt;">${getUserName(client.userId)}</td>
+          <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt; font-weight: bold; color: #000000;">
             ${client.status === 'approved' ? 'APROVADO' : client.status === 'rejected' ? 'REPROVADO' : 'PENDENTE'}
           </td>
-          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; color: #475569; font-size: 7.5pt;">${client.observations || ''}</td>
+          <td style="border: 0.5pt solid #000000; text-align: left; vertical-align: middle; font-size: 8.5pt;">${client.observations || '-'}</td>
         </tr>
       `).join('');
 
@@ -277,33 +269,45 @@ const Reports: React.FC = () => {
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
         <head><meta charset="UTF-8">
         <style>
-          body { font-family: 'Segoe UI', sans-serif; }
-          th { background-color: #dcfce7; color: #166534; border: 0.1pt solid #cbd5e1; font-size: 9pt; padding: 6px; text-align: center; vertical-align: middle; font-weight: bold; }
+          /* Estilo para garantir o preenchimento no Excel */
+          .header-cell { 
+            background-color: #C6EFCE !important; /* Verde claro estilo Excel */
+            color: #006100; 
+            border: 0.5pt solid #000000; 
+            font-size: 10pt; 
+            text-align: center; 
+            font-weight: bold; 
+            mso-pattern: black none;
+            background: #C6EFCE;
+          }
+          td { border: 0.5pt solid #000000; }
         </style>
         </head>
         <body>
           <table>
-            <tr><td colspan="9" style="font-size: 14pt; font-weight: bold; text-align: center; padding: 10px;">RELATÓRIO DE CLIENTES</td></tr>
-            <tr><td colspan="9" style="font-size: 8pt; text-align: center; color: #64748b; padding-bottom: 10px;">Período Filtrado: ${periodoDesc}</td></tr>
-            <tr style="height: 20pt;">${tableHeaders.map(h => `<th>${h}</th>`).join('')}</tr>
+            <tr><td colspan="9" style="font-size: 16pt; font-weight: bold; text-align: center; padding: 20px; border: none;">RELATÓRIO DE CLIENTES</td></tr>
+            <tr><td colspan="9" style="font-size: 9pt; text-align: center; color: #64748b; padding-bottom: 15px; border: none;">Período: ${periodDesc}</td></tr>
+            <tr style="height: 25pt;">
+              ${tableHeaders.map(h => `<th bgcolor="#C6EFCE" style="background-color: #C6EFCE; border: 0.5pt solid #000000; color: #000000; font-weight: bold;">${h}</th>`).join('')}
+            </tr>
             ${tableRows}
           </table>
         </body></html>
       `;
+
       const blob = new Blob([excelTemplate], { type: 'application/vnd.ms-excel' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `Planilha_Clientes_${format(new Date(), 'ddMMyy')}.xls`;
+      link.download = `Relatorio_Clientes_${format(today, 'ddMMyy')}.xls`;
       link.click();
       URL.revokeObjectURL(url);
       
-      toast({ 
-        title: "Planilha exportada com sucesso", 
-        description: "O download do arquivo foi concluído.", 
-        className: "bg-white border-zinc-950 text-zinc-950 shadow-2xl font-medium"
-      });
-    } catch (e) { toast({ title: "Erro", description: "Falha na exportação.", variant: "destructive" }); }
+      toast({ title: "Sucesso", description: "Exportação em andamento" });
+    } catch (e) { 
+      console.error("Erro detalhado na exportação:", e);
+      toast({ title: "Erro", description: "Falha na exportação.", variant: "destructive" }); 
+    }
   };
 
   const getPageNumbers = () => {
@@ -447,6 +451,7 @@ const Reports: React.FC = () => {
             </CardContent>
           </Card>
 
+          {/* RANKING COM DESTAQUE NO NÚMERO */}
           <Card className="border-l-4 border-l-emerald-500 flex flex-col hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
@@ -455,11 +460,26 @@ const Reports: React.FC = () => {
             </CardHeader>
             <CardContent className="flex-1 flex flex-col justify-center">
               {consultantsRanking.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {consultantsRanking.map((item, index) => (
-                    <div key={index} className="flex justify-between text-sm">
-                      <span className="truncate max-w-[100px] font-medium">{index + 1}º {item.name.split(' ')[0]}</span>
-                      <span className="font-bold text-emerald-600">{item.count}</span>
+                    <div key={index} className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-3">
+                        <span className={cn(
+                          "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm transition-colors",
+                          index === 0 ? "bg-yellow-500 ring-2 ring-yellow-200" : 
+                          index === 1 ? "bg-slate-400 ring-2 ring-slate-100" : 
+                          index === 2 ? "bg-amber-700 ring-2 ring-amber-100" : 
+                          "bg-slate-200 text-slate-600"
+                        )}>
+                          {index + 1}
+                        </span>
+                        <span className="font-medium text-zinc-700 truncate max-w-[100px]">
+                          {item.name.split(' ')[0]}
+                        </span>
+                      </div>
+                      <span className="font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded text-xs">
+                        {item.count}
+                      </span>
                     </div>
                   ))}
                 </div>
@@ -574,9 +594,7 @@ const Reports: React.FC = () => {
                       <TableRow key={client.id} className="hover:bg-muted/50">
                         <TableCell className="font-medium">{client.name}</TableCell>
                         <TableCell className="text-xs text-muted-foreground font-medium font-mono">{client.cpf}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground font-medium">{client.phone}</TableCell>
                         <TableCell className="text-xs font-semibold">{getSectorName(client.sectorId)}</TableCell>
-                        <TableCell className="text-xs">{getUserName(client.userId)}</TableCell>
                         <TableCell className="text-xs">{format(new Date(client.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}</TableCell>
                         <TableCell className="text-right">
                           <Badge variant="outline" className={cn(client.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : client.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-orange-50 text-orange-700 border-orange-200')}>
@@ -586,7 +604,7 @@ const Reports: React.FC = () => {
                       </TableRow>
                     ))
                   ) : (
-                    <TableRow><TableCell colSpan={7} className="h-24 text-center">Nenhum cliente encontrado.</TableCell></TableRow>
+                    <TableRow><TableCell colSpan={5} className="h-24 text-center">Nenhum cliente encontrado.</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
