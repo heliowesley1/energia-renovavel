@@ -1,13 +1,14 @@
 /**
  * ARQUIVO: src/components/user/UserDashboard.tsx
  * ATUALIZAÇÕES:
- * 1. Persistência: Integrado com useApi para evitar duplicação e salvar anexos.
- * 2. Layout: Mantido 3 colunas e Modal max-w-4xl conforme solicitado.
+ * 1. Edição de Data: Adicionado campo para alterar 'Data de Registo' (createdAt).
+ * 2. Persistência: Envio de datas formatadas para o MySQL (YYYY-MM-DD HH:MM:SS).
+ * 3. Payload: Garantia de envio de userId e sectorId do contexto de autenticação.
  */
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
-import { useApi } from '@/hooks/useApi'; // Adicionado para persistência real
+import { useApi } from '@/hooks/useApi';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import type { Client } from '@/types';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -58,16 +59,12 @@ import {
   ZoomOut,
   Download,
   ExternalLink,
-  User,
   Mail,
   Phone,
   Hash,
-  MapPin,
-  Clock,
   Copy,
-  CheckCircle2,
-  CalendarDays,
-  FileCheck
+  FileCheck,
+  CalendarDays
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -76,15 +73,14 @@ import { isSameDay, isSameMonth, subDays, isAfter, startOfDay, endOfDay, isWithi
 const UserDashboard: React.FC = () => {
   const { user } = useAuth();
   const { toast } = useToast();
-  const api = useApi(); // Instância da API
+  const api = useApi();
   
-  // Alterado para carregar do banco de dados real
   const [clients, setClients] = useState<Client[]>([]);
 
   const loadData = async () => {
     try {
       const data = await api.get('/clientes.php');
-      const myClients = (data || []).filter((c: any) => c.userId === user?.id);
+      const myClients = (data || []).filter((c: any) => Number(c.userId) === Number(user?.id));
       setClients(myClients);
     } catch (error) {
       toast({ title: "Erro de Conexão", description: "Falha ao carregar dados do banco.", variant: "destructive" });
@@ -92,16 +88,14 @@ const UserDashboard: React.FC = () => {
   };
 
   useEffect(() => {
-    loadData();
+    if (user?.id) loadData();
   }, [user?.id]);
 
-  // --- ESTADOS DOS FILTROS ---
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [periodFilter, setPeriodFilter] = useState('all');
   const [customDate, setCustomDate] = useState<{ from: string; to: string }>({ from: '', to: '' });
 
-  // --- LÓGICA DE FILTRAGEM E ORDENAÇÃO ---
   const filteredClients = useMemo(() => {
     const filtered = clients.filter(client => {
       const termLower = searchTerm.toLowerCase();
@@ -144,7 +138,6 @@ const UserDashboard: React.FC = () => {
     return filtered.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [clients, searchTerm, statusFilter, periodFilter, customDate]);
 
-  // --- LIMPAR FILTROS ---
   const clearFilters = () => {
     setSearchTerm('');
     setStatusFilter('all');
@@ -152,7 +145,6 @@ const UserDashboard: React.FC = () => {
     setCustomDate({ from: '', to: '' });
   };
 
-  // --- PAGINAÇÃO ---
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 20;
   const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
@@ -183,7 +175,6 @@ const UserDashboard: React.FC = () => {
 
   useEffect(() => { setCurrentPage(1); }, [searchTerm, statusFilter, periodFilter, customDate]);
 
-  // --- ESTADOS DE INTERFACE ---
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [viewingClientDetails, setViewingClientDetails] = useState<Client | null>(null);
@@ -193,6 +184,7 @@ const UserDashboard: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '', email: '', cpf: '', phone: '', observations: '',
     status: 'pending' as 'pending' | 'approved' | 'rejected',
+    createdAt: '', // Adicionado para controle de data
   });
   const [filePreview, setFilePreview] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -247,7 +239,7 @@ const UserDashboard: React.FC = () => {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', email: '', cpf: '', phone: '', observations: '', status: 'pending' });
+    setFormData({ name: '', email: '', cpf: '', phone: '', observations: '', status: 'pending', createdAt: '' });
     setFilePreview(null);
     setEditingClient(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
@@ -257,8 +249,14 @@ const UserDashboard: React.FC = () => {
     if (client) {
       setEditingClient(client);
       setFormData({
-        name: client.name, email: client.email || '', cpf: client.cpf, phone: client.phone || '',
-        observations: client.observations || '', status: client.status,
+        name: client.name, 
+        email: client.email || '', 
+        cpf: client.cpf, 
+        phone: client.phone || '',
+        observations: client.observations || '', 
+        status: client.status,
+        // Converte a data do banco para o formato de input date (YYYY-MM-DD)
+        createdAt: client.createdAt ? client.createdAt.split(' ')[0] : '',
       });
       setFilePreview(client.imageUrl || null);
     } else {
@@ -286,30 +284,46 @@ const UserDashboard: React.FC = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // --- SUBMISSÃO CORRIGIDA PARA PERSISTÊNCIA REAL ---
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    const now = new Date();
+    const mysqlTime = now.toTimeString().split(' ')[0]; // HH:MM:SS
+    const mysqlNow = now.toISOString().slice(0, 10) + ' ' + mysqlTime;
+
+    // Se o usuário alterou a data no input, combina com o horário atual ou original
+    const finalCreatedAt = formData.createdAt 
+      ? formData.createdAt + ' ' + (editingClient?.createdAt?.split(' ')[1] || mysqlTime)
+      : mysqlNow;
+
     const payload = {
         ...formData,
-        id: editingClient?.id, // ID enviado para o PHP detectar UPDATE e não duplicar
-        imageUrl: filePreview, // Envia o anexo em Base64
+        id: editingClient?.id,
+        imageUrl: filePreview,
         userId: user?.id,
-        sectorId: user?.sectorId
+        sectorId: user?.sectorId,
+        createdAt: finalCreatedAt,
+        updatedAt: mysqlNow
     };
 
     try {
-      if (editingClient) {
-        await api.post('/clientes.php?action=update', payload);
-        toast({ title: 'Cliente atualizado!' });
+      const endpoint = editingClient ? '/clientes.php?action=update' : '/clientes.php?action=create';
+      const response = await api.post(endpoint, payload);
+      
+      if (response && response.success !== false) {
+        toast({ title: editingClient ? 'Cliente atualizado!' : 'Cliente cadastrado com sucesso!' });
+        await loadData();
+        setIsDialogOpen(false);
+        resetForm();
       } else {
-        await api.post('/clientes.php?action=create', payload);
-        toast({ title: 'Cliente cadastrado' });
+        throw new Error(response?.message || "Erro ao processar requisição.");
       }
-      await loadData(); // Recarrega a lista do banco
-      setIsDialogOpen(false);
-      resetForm();
-    } catch (err) {
-      toast({ title: "Erro ao salvar", variant: "destructive" });
+    } catch (err: any) {
+      toast({ 
+        title: "Erro ao salvar", 
+        description: err.message || "Verifique a conexão com o servidor.", 
+        variant: "destructive" 
+      });
     }
   };
 
@@ -329,7 +343,7 @@ const UserDashboard: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">Gerenciar Meus Clientes</h1>
-            <p className="text-muted-foreground mt-1">Lista completa dos cadastros</p>
+            <p className="text-muted-foreground mt-1">Lista completa dos cadastros realizados no sistema.</p>
           </div>
           
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -342,18 +356,21 @@ const UserDashboard: React.FC = () => {
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" onOpenAutoFocus={(e) => e.preventDefault()}>
               <DialogHeader>
                 <DialogTitle className="text-2xl">{editingClient ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}</DialogTitle>
-                <DialogDescription>{!editingClient && 'Preencha os dados abaixo. Nome e CPF são obrigatórios.'}</DialogDescription>
+                <DialogDescription>Preencha os dados do cliente e anexe os documentos necessários.</DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
-                    <Label htmlFor="name">Nome</Label>
-                    <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required placeholder="Nome completo" disabled={!!editingClient} />
+                    <Label htmlFor="name">Nome Completo</Label>
+                    <Input id="name" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} required placeholder="Ex: João Silva" disabled={!!editingClient} />
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="cpf">CPF</Label>
                     <Input id="cpf" value={formData.cpf} onChange={(e) => setFormData({ ...formData, cpf: formatCPF(e.target.value) })} required placeholder="000.000.000-00" maxLength={14} disabled={!!editingClient} />
                   </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label htmlFor="email">Email</Label>
                     <Input id="email" type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="email@exemplo.com" disabled={!!editingClient} />
@@ -365,22 +382,37 @@ const UserDashboard: React.FC = () => {
                 </div>
 
                 {editingClient && (
-                  <div className="space-y-2 bg-muted/50 p-4 rounded-lg border border-border shadow-sm">
-                    <Label htmlFor="status" className="flex items-center gap-2 font-semibold">Status</Label>
-                    <Select value={formData.status} onValueChange={(value: any) => setFormData({ ...formData, status: value })} disabled={isFinalized}>
-                      <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pending">Pendente</SelectItem>
-                        <SelectItem value="approved">Aprovado</SelectItem>
-                        <SelectItem value="rejected">Reprovado</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg border border-border">
+                    <div className="space-y-2">
+                      <Label htmlFor="status" className="font-semibold flex items-center gap-2">Status</Label>
+                      <Select value={formData.status} onValueChange={(value: any) => setFormData({ ...formData, status: value })} disabled={isFinalized}>
+                        <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pendente</SelectItem>
+                          <SelectItem value="approved">Aprovado</SelectItem>
+                          <SelectItem value="rejected">Reprovado</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="createdAt" className="font-semibold flex items-center gap-2">Data de Registo</Label>
+                      <div className="relative">
+                        <CalendarDays className="absolute left-3 top-2.5 h-4 w-4 text-muted-foreground" />
+                        <Input 
+                          id="createdAt" 
+                          type="date" 
+                          className="pl-9 bg-background" 
+                          value={formData.createdAt} 
+                          onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })}
+                        />
+                      </div>
+                    </div>
                   </div>
                 )}
 
                 <div className="space-y-2">
-                  <Label htmlFor="observations">Observações</Label>
-                  <Textarea id="observations" value={formData.observations} onChange={(e) => setFormData({ ...formData, observations: e.target.value })} placeholder="Informações adicionais..." />
+                  <Label htmlFor="observations">Observações do Atendimento</Label>
+                  <Textarea id="observations" value={formData.observations} onChange={(e) => setFormData({ ...formData, observations: e.target.value })} placeholder="Detalhes relevantes sobre o cliente..." />
                 </div>
 
                 <div className="space-y-2">
@@ -389,7 +421,7 @@ const UserDashboard: React.FC = () => {
                     <div className="flex flex-col items-center gap-3">
                       {!filePreview ? (
                         <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} className="w-full">
-                            <Upload className="w-4 h-4 mr-2" /> Anexar Arquivo
+                            <Upload className="w-4 h-4 mr-2" /> Anexar Documento
                         </Button>
                       ) : (
                         <div className="relative group w-full">
@@ -405,7 +437,7 @@ const UserDashboard: React.FC = () => {
                           </div>
                           <div className="flex items-center justify-between mt-2">
                             <span className="text-xs text-emerald-600 font-medium flex items-center">
-                              {isPdf(filePreview) ? <FileText className="w-3 h-3 mr-1" /> : <ImageIcon className="w-3 h-3 mr-1" />} Arquivo anexado
+                              {isPdf(filePreview) ? <FileText className="w-3 h-3 mr-1" /> : <ImageIcon className="w-3 h-3 mr-1" />} Arquivo pronto
                             </span>
                             <Button type="button" variant="destructive" size="sm" className="h-7 text-xs" onClick={removeFile}><X className="w-3 h-3 mr-1" /> Remover</Button>
                           </div>
@@ -418,13 +450,12 @@ const UserDashboard: React.FC = () => {
 
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
-                  <Button type="submit" variant="hero">{editingClient ? 'Salvar' : 'Cadastrar'}</Button>
+                  <Button type="submit" variant="hero">{editingClient ? 'Salvar Alterações' : 'Concluir Cadastro'}</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
           </Dialog>
 
-          {/* --- DIALOG DE DETALHES (OLHO) --- */}
           <Dialog open={!!viewingClientDetails} onOpenChange={() => setViewingClientDetails(null)}>
             <DialogContent className="max-w-4xl p-0 gap-0 overflow-hidden bg-background border border-border shadow-2xl rounded-2xl [&>button]:hidden">
               {viewingClientDetails && (
@@ -437,7 +468,7 @@ const UserDashboard: React.FC = () => {
                          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
                             <div className="text-center sm:text-left space-y-1 mt-1">
                                 <h2 className="text-2xl font-bold tracking-tight text-foreground">{viewingClientDetails.name}</h2>
-                                <p className="text-sm text-muted-foreground flex items-center justify-center sm:justify-start gap-1"><span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-xs">ID: {viewingClientDetails.id}</span></p>
+                                <p className="text-sm text-muted-foreground flex items-center justify-center sm:justify-start gap-1"><span className="font-mono bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-xs">ID de Cadastro: {viewingClientDetails.id}</span></p>
                             </div>
                          </div>
                     </div>
@@ -466,19 +497,19 @@ const UserDashboard: React.FC = () => {
                                 <div className="relative">
                                     <div className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full bg-zinc-300 border-2 border-background ring-1 ring-zinc-100" />
                                     <p className="text-xs text-muted-foreground mb-0.5">Criado em</p>
-                                    <p className="text-sm font-medium">{format(new Date(viewingClientDetails.createdAt), "dd/MM/yyyy")}</p>
-                                    <p className="text-xs text-muted-foreground">{format(new Date(viewingClientDetails.createdAt), "HH:mm")}</p>
+                                    <p className="text-sm font-medium">{viewingClientDetails.createdAt ? format(new Date(viewingClientDetails.createdAt), "dd/MM/yyyy") : '-'}</p>
+                                    <p className="text-xs text-muted-foreground">{viewingClientDetails.createdAt ? format(new Date(viewingClientDetails.createdAt), "HH:mm") : '-'}</p>
                                 </div>
                                 <div className="relative">
                                     <div className="absolute -left-[21px] top-1 h-2.5 w-2.5 rounded-full bg-primary border-2 border-background ring-1 ring-primary/20" />
                                     <p className="text-xs text-muted-foreground mb-0.5">Última Edição</p>
-                                    <p className="text-sm font-medium">{format(new Date(viewingClientDetails.updatedAt), "dd/MM/yyyy")}</p>
-                                    <p className="text-xs text-muted-foreground">{format(new Date(viewingClientDetails.updatedAt), "HH:mm")}</p>
+                                    <p className="text-sm font-medium">{viewingClientDetails.updatedAt ? format(new Date(viewingClientDetails.updatedAt), "dd/MM/yyyy") : '-'}</p>
+                                    <p className="text-xs text-muted-foreground">{viewingClientDetails.updatedAt ? format(new Date(viewingClientDetails.updatedAt), "HH:mm") : '-'}</p>
                                 </div>
                             </div>
                             <div className="md:col-span-2 space-y-2">
-                                <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><FileCheck className="w-3.5 h-3.5" /> Observações Internas</Label>
-                                <div className="bg-zinc-50/50 p-4 rounded-xl border border-dashed border-zinc-200 text-sm text-foreground/80 min-h-[100px] leading-relaxed">{viewingClientDetails.observations || <span className="text-muted-foreground/50 italic">Sem observações registradas.</span>}</div>
+                                <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><FileCheck className="w-3.5 h-3.5" /> Notas Internas</Label>
+                                <div className="bg-zinc-50/50 p-4 rounded-xl border border-dashed border-zinc-200 text-sm text-foreground/80 min-h-[100px] leading-relaxed">{viewingClientDetails.observations || <span className="text-muted-foreground/50 italic">Sem observações registadas.</span>}</div>
                             </div>
                         </div>
 
@@ -504,12 +535,11 @@ const UserDashboard: React.FC = () => {
             </DialogContent>
           </Dialog>
 
-          {/* --- VISUALIZADOR DE ARQUIVOS --- */}
           <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
             <DialogContent className="fixed !left-0 !top-0 !translate-x-0 !translate-y-0 w-screen h-screen max-w-none p-0 bg-emerald-950/90 backdrop-blur-md border-none shadow-none focus:outline-none [&>button]:hidden flex items-center justify-center pointer-events-none z-[100]">
-               <DialogTitle className="sr-only">Visualização do Anexo</DialogTitle>
-               <div className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto">
-                 <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-2 p-2 bg-black/80 backdrop-blur-md rounded-full shadow-2xl border border-white/10">
+                <DialogTitle className="sr-only">Visualização do Anexo</DialogTitle>
+                <div className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto">
+                  <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-2 p-2 bg-black/80 backdrop-blur-md rounded-full shadow-2xl border border-white/10">
                     {!isPdf(viewingFile || '') && (
                       <><Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.max(0.5, s - 0.25))}><ZoomOut className="w-4 h-4" /></Button>
                       <span className="text-xs font-medium text-white w-12 text-center select-none">{Math.round(zoomScale * 100)}%</span>
@@ -520,11 +550,11 @@ const UserDashboard: React.FC = () => {
                     {isPdf(viewingFile || '') && <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={handleOpenNewTab}><ExternalLink className="w-4 h-4" /></Button>}
                     <div className="w-px h-4 bg-white/20 mx-1" />
                     <Button variant="ghost" size="icon" className="text-white hover:bg-red-500/80 h-8 w-8 rounded-full" onClick={() => setViewingFile(null)}><X className="w-4 h-4" /></Button>
-                 </div>
-                 <div className="w-[95vw] h-[90vh] flex items-center justify-center relative mt-8">
+                  </div>
+                  <div className="w-[95vw] h-[90vh] flex items-center justify-center relative mt-8">
                     {viewingFile && (isPdf(viewingFile) ? (<div className="w-full h-full bg-white rounded-lg overflow-hidden border border-border"><object data={viewingFile} type="application/pdf" className="w-full h-full" /></div>) : (<div className="w-full h-full flex items-center justify-center overflow-auto p-4"><img src={viewingFile} className="rounded-lg shadow-2xl object-contain transition-transform duration-200 max-w-full max-h-full" style={{ transform: `scale(${zoomScale})` }} /></div>))}
-                 </div>
-               </div>
+                  </div>
+                </div>
             </DialogContent>
           </Dialog>
 

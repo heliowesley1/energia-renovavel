@@ -17,12 +17,14 @@ export const useApi = () => {
       const data = await response.json();
       
       if (!response.ok) {
-        throw new Error(data.message || 'Erro na requisição');
+        // Propaga o erro para o catch do componente que chamou a API
+        throw new Error(data.error || data.message || 'Erro na requisição');
       }
       return data;
     } catch (error) {
       console.error("Erro na API:", error);
-      return null;
+      // Lança o erro novamente para ser capturado pelo try-catch do componente
+      throw error; 
     }
   };
 

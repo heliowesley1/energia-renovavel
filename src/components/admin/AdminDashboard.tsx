@@ -67,6 +67,7 @@ import {
   Upload,
   Edit,
   Eraser,
+  CalendarDays,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -167,9 +168,11 @@ const AdminDashboard: React.FC = () => {
   const formatCPF = (value: string) => value.replace(/\D/g, '').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d)/, '$1.$2').replace(/(\d{3})(\d{1,2})/, '$1-$2').replace(/(-\d{2})\d+?$/, '$1');
   const formatPhone = (value: string) => value.replace(/\D/g, '').replace(/(\d{2})(\d)/, '($1) $2').replace(/(\d{5})(\d)/, '$1-$2').replace(/(-\d{4})\d+?$/, '$1');
 
-  const toInputDate = (date: Date) => {
+  const toInputDate = (dateStr: string) => {
+    if (!dateStr) return '';
     try {
-      return date.toISOString().slice(0, 16);
+      const date = new Date(dateStr);
+      return date.toISOString().split('T')[0];
     } catch (e) {
       return '';
     }
@@ -204,31 +207,30 @@ const AdminDashboard: React.FC = () => {
         setEditingClient(client);
         setFormData({
             name: client.name,
-            email: client.email,
+            email: client.email || '',
             cpf: client.cpf,
-            phone: client.phone,
+            phone: client.phone || '',
             sectorId: client.sectorId || '',
             userId: client.userId || '',
             observations: client.observations || '',
             status: client.status,
-            createdAt: toInputDate(new Date(client.createdAt)),
-            updatedAt: toInputDate(new Date(client.updatedAt)),
+            createdAt: toInputDate(client.createdAt),
+            updatedAt: toInputDate(client.updatedAt),
         });
         setFilePreview(client.imageUrl || null);
     } else {
         setEditingClient(null);
-        const now = new Date();
         setFormData({
             name: '',
             email: '',
             cpf: '',
             phone: '',
             sectorId: isSupervisor ? user?.sectorId || '' : '',
-            userId: '',
+            userId: isAdmin ? user?.id || '' : '', 
             observations: '',
             status: 'pending',
-            createdAt: toInputDate(now),
-            updatedAt: toInputDate(now),
+            createdAt: new Date().toISOString().split('T')[0],
+            updatedAt: '',
         });
         setFilePreview(null);
     }
@@ -238,42 +240,39 @@ const AdminDashboard: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    let finalUserId = formData.userId;
-    if (!finalUserId && user?.id) {
-        finalUserId = user.id;
-    }
+    const now = new Date();
+    const mysqlTime = now.toTimeString().split(' ')[0]; // HH:MM:SS
+    const mysqlNow = now.toISOString().slice(0, 10) + ' ' + mysqlTime;
 
-    if (!finalUserId) {
-         toast({ title: "Erro", description: "Não foi possível definir o responsável.", variant: "destructive" });
-         return;
-    }
+    let finalUserId = formData.userId || user?.id;
 
-    const finalCreatedAt = isAdmin && formData.createdAt ? new Date(formData.createdAt) : (editingClient?.createdAt ? new Date(editingClient.createdAt) : new Date());
-    const finalUpdatedAt = new Date();
+    // Lógica crucial: Preserva o horário original se estiver editando, ou usa o atual se for novo
+    const finalCreatedAt = formData.createdAt 
+      ? formData.createdAt + ' ' + (editingClient?.createdAt?.split(' ')[1] || mysqlTime)
+      : mysqlNow;
 
     const payload = {
         ...formData,
         id: editingClient?.id,
         userId: finalUserId,
         imageUrl: filePreview,
-        createdAt: finalCreatedAt.toISOString(),
-        updatedAt: finalUpdatedAt.toISOString()
+        createdAt: finalCreatedAt,
+        updatedAt: mysqlNow,
+        sectorId: (formData.sectorId === '' || formData.sectorId === 'all') ? null : formData.sectorId
     };
 
     try {
-        if (editingClient) {
-            await api.post('/clientes.php?action=update', payload);
-            toast({ title: 'Sucesso', description: 'Cliente atualizado' });
-        } else {
-            await api.post('/clientes.php?action=create', payload);
-            toast({ title: 'Sucesso', description: 'Cliente cadastrado' });
-        }
+        const endpoint = editingClient ? '/clientes.php?action=update' : '/clientes.php?action=create';
+        const response = await api.post(endpoint, payload);
         
-        loadAllData();
-        setIsFormOpen(false);
-        setFilePreview(null);
+        if (response && response.success !== false) {
+            toast({ title: 'Sucesso', description: 'Dados gravados com sucesso.' });
+            loadAllData();
+            setIsFormOpen(false);
+            setFilePreview(null);
+        }
     } catch (err) {
-        toast({ title: "Erro ao salvar", description: "Verifique a API PHP.", variant: "destructive" });
+        toast({ title: "Erro ao salvar", description: "Verifique a API e o banco de dados.", variant: "destructive" });
     }
   };
 
@@ -285,28 +284,27 @@ const AdminDashboard: React.FC = () => {
 
   // --- FILTER LOGIC ---
   const filteredClients = clients.filter((client) => {
-    if (isSupervisor && client.sectorId !== user.sectorId) return false;
+    // 1. Filtro de Supervisor (Setor fixo)
+    if (isSupervisor && client.sectorId !== user?.sectorId) return false;
 
+    // 2. Filtro de Busca (Nome, CPF ou ID)
     let matchesSearch = true;
     if (searchTerm) {
       const termLower = searchTerm.toLowerCase();
-      if (termLower.startsWith('#')) {
-        const idTerm = termLower.replace('#', '').trim();
-        if (idTerm) {
-          matchesSearch = client.id.toLowerCase().includes(idTerm);
-        }
-      } else {
-        const nameMatch = client.name.toLowerCase().includes(termLower);
-        const termClean = searchTerm.replace(/\D/g, '');
-        const clientCpfClean = client.cpf.replace(/\D/g, '');
-        const cpfMatch = termClean.length > 0 && clientCpfClean.includes(termClean);
-        matchesSearch = nameMatch || cpfMatch;
-      }
+      const nameMatch = client.name.toLowerCase().includes(termLower);
+      const cpfMatch = client.cpf.replace(/\D/g, '').includes(termLower.replace(/\D/g, ''));
+      const idMatch = client.id.toString().includes(termLower.replace('#', ''));
+      matchesSearch = nameMatch || cpfMatch || idMatch;
     }
 
+    // 3. Filtro de Status
     const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
-    const matchesSector = isSupervisor ? true : (sectorFilter === 'all' || client.sectorId === sectorFilter);
-    const matchesUser = userFilter === 'all' || client.userId === userFilter;
+    
+    // 4. Filtro de Setor (Somente Admin)
+    const matchesSector = sectorFilter === 'all' || client.sectorId?.toString() === sectorFilter.toString();
+    
+    // 5. Filtro de Usuário (Consultor)
+    const matchesUser = userFilter === 'all' || client.userId?.toString() === userFilter.toString();
 
     return matchesSearch && matchesStatus && matchesSector && matchesUser;
   });
@@ -336,7 +334,7 @@ const AdminDashboard: React.FC = () => {
     return pages;
   };
 
-  const statsSource = isSupervisor ? clients.filter(c => c.sectorId === user.sectorId) : clients;
+  const statsSource = isSupervisor ? clients.filter(c => c.sectorId === user?.sectorId) : clients;
 
   const stats = [
     { title: 'Total', value: statsSource.length, icon: Users, color: 'text-primary', bg: 'bg-primary/10', borderClass: 'border-l-primary' },
@@ -353,25 +351,25 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const getSectorName = (id: string) => {
-    if (!id) return 'Admin';
-    return dbSectors.find(s => s.id === id)?.name || 'N/A';
+  const getSectorName = (id: any) => {
+    if (!id || id === '0' || id === null) return '-'; 
+    return dbSectors.find(s => s.id.toString() === id.toString())?.name || '-';
   };
 
-  const getUserName = (id: string) => dbUsers.find(u => u.id === id)?.name || 'N/A';
+  const getUserName = (id: any) => dbUsers.find(u => u.id.toString() === id.toString())?.name || 'N/A';
 
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in pb-10">
         {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-display font-bold text-foreground">
-              {isSupervisor ? `Gestão - ${getSectorName(user.sectorId || '')}` : 'Clientes cadastrados'}
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              {isSupervisor ? 'Visualize os clientes do seu setor' : 'Gerencie clientes, setores e usuários do sistema'}
-            </p>
+              <h1 className="text-3xl font-display font-bold text-foreground">
+                {isSupervisor ? `Gestão - ${getSectorName(user?.sectorId)}` : 'Clientes cadastrados'}
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                {isSupervisor ? 'Visualize os clientes do seu setor' : 'Gerencie clientes, setores e usuários do sistema'}
+              </p>
+            </div>
           </div>
 
           <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
@@ -384,35 +382,20 @@ const AdminDashboard: React.FC = () => {
               <DialogHeader>
                 <DialogTitle>{editingClient ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}</DialogTitle>
                 <DialogDescription>
-                  {editingClient 
-                    ? (isSupervisor ? "Supervisores podem alterar Status e Consultor." : "Edite os dados do cliente.") 
-                    : "Preencha os dados abaixo."}
+                  Preencha as informações do cliente e defina o consultor responsável.
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
 
-                {isAdmin && editingClient && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="createdAt">Data de Criação</Label>
-                      <Input 
-                        id="createdAt" 
-                        type="datetime-local"
-                        value={formData.createdAt} 
-                        onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })} 
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="updatedAt">Data de Alteração</Label>
-                      <Input 
-                        id="updatedAt" 
-                        type="datetime-local"
-                        value={formData.updatedAt} 
-                        onChange={(e) => setFormData({ ...formData, updatedAt: e.target.value })} 
-                      />
-                    </div>
-                  </div>
-                )}
+                <div className="space-y-2 p-3 bg-muted/40 rounded-lg border border-dashed">
+                  <Label htmlFor="createdAt" className="flex items-center gap-2"><CalendarDays className="w-4 h-4" /> Data de Registro</Label>
+                  <Input 
+                    id="createdAt" 
+                    type="date"
+                    value={formData.createdAt} 
+                    onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })} 
+                  />
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="space-y-2">
@@ -484,12 +467,11 @@ const AdminDashboard: React.FC = () => {
                     <div className="space-y-2">
                         <Label htmlFor="sector">Setor</Label>
                         <Select 
-                        value={formData.sectorId?.toString() || ""}
-                        onValueChange={(val) => setFormData({ ...formData, sectorId: val })}
-                        disabled={!!editingClient && isSupervisor}
+                          value={formData.sectorId?.toString() || ""}
+                          onValueChange={(val) => setFormData({ ...formData, sectorId: val, userId: '' })}
                         >
                         <SelectTrigger>
-                            <SelectValue placeholder={isAdmin ? "Selecione (Opcional)" : "Selecione..."} />
+                            <SelectValue placeholder="Selecione o setor" />
                         </SelectTrigger>
                         <SelectContent>
                             {dbSectors.map((sector) => (
@@ -505,23 +487,22 @@ const AdminDashboard: React.FC = () => {
                     <Select 
                       value={formData.userId?.toString() || ""}
                       onValueChange={(val) => setFormData({ ...formData, userId: val })}
+                      disabled={!formData.sectorId}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder={(isAdmin || isSupervisor) ? "Selecione (Opcional)" : "Selecione o consultor..."} />
+                        <SelectValue placeholder={formData.sectorId ? "Escolha o consultor" : "Defina o setor"} />
                       </SelectTrigger>
                       <SelectContent>
                         {dbUsers
-                            .filter(u => u.role === 'user' && (!isSupervisor || u.sectorId === user.sectorId))
+                            .filter(u => 
+                              u.sectorId?.toString() === formData.sectorId?.toString() && 
+                              (u.role === 'user' || u.role === 'supervisor')
+                            )
                             .map((user) => (
                           <SelectItem key={user.id} value={user.id.toString()}>{user.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
-                    {(isSupervisor || isAdmin) && !formData.userId && (
-                        <p className="text-[10px] text-muted-foreground mt-1">
-                            * Deixe vazio para assumir este cliente você mesmo.
-                        </p>
-                    )}
                   </div>
                 </div>
 
@@ -599,7 +580,7 @@ const AdminDashboard: React.FC = () => {
           ))}
         </div>
 
-        {/* Filters Section ajustada para simetria */}
+        {/* Filters Section */}
         <Card className="glass-card">
           <CardHeader className="pb-4">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -608,7 +589,6 @@ const AdminDashboard: React.FC = () => {
           </CardHeader>
           <CardContent>
             <div className="flex flex-col lg:flex-row items-center gap-3 w-full">
-              
               <div className="relative w-full lg:flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input 
@@ -657,9 +637,9 @@ const AdminDashboard: React.FC = () => {
                   <SelectContent>
                     <SelectItem value="all">Todos os Funcionários</SelectItem>
                     {dbUsers
-                      .filter((u) => u.role === 'user' && (!isSupervisor || u.sectorId === user.sectorId))
-                      .map((user) => (
-                        <SelectItem key={user.id} value={user.id.toString()}>{user.name}</SelectItem>
+                      .filter((u) => u.role === 'user' && (!isSupervisor || u.sectorId?.toString() === user?.sectorId?.toString()))
+                      .map((u) => (
+                        <SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
@@ -696,11 +676,12 @@ const AdminDashboard: React.FC = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>ID</TableHead>
+                    <TableHead>Data</TableHead>
                     <TableHead>Cliente</TableHead>
                     <TableHead>CPF</TableHead>
                     <TableHead>Telefone</TableHead>
-                    {!isSupervisor && <TableHead>Setor</TableHead>}
-                    <TableHead>Consultor</TableHead>
+                    <TableHead>Setor</TableHead>
+                    <TableHead>Responsável</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-center">Ações</TableHead>
                   </TableRow>
@@ -709,6 +690,9 @@ const AdminDashboard: React.FC = () => {
                   {paginatedClients.map((client) => (
                     <TableRow key={client.id}>
                       <TableCell className="text-xs font-semibold text-muted-foreground">#{client.id}</TableCell>
+                      <TableCell className="text-xs font-medium">
+                        {client.createdAt ? format(new Date(client.createdAt), "dd/MM/yyyy") : '-'}
+                      </TableCell>
                       <TableCell>
                         <div>
                           <p className="font-medium">{client.name}</p>
@@ -717,19 +701,16 @@ const AdminDashboard: React.FC = () => {
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground font-medium">{client.cpf}</TableCell>
                       <TableCell className="text-xs text-muted-foreground font-medium">{client.phone}</TableCell>
-                      {!isSupervisor && (
-                        <TableCell>
-                          <Badge variant="outline">{getSectorName(client.sectorId)}</Badge>
-                        </TableCell>
-                      )}
-                      <TableCell>{getUserName(client.userId)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground font-bold">
+                        {getSectorName(client.sectorId)}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground font-medium">{getUserName(client.userId)}</TableCell>
                       <TableCell>{getStatusBadge(client.status)}</TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-1">
                             <Button variant="ghost" size="icon" onClick={() => setViewingClientDetails(client)} title="Ver Detalhes">
                                 <Eye className="w-4 h-4" />
                             </Button>
-
                             <Button variant="ghost" size="icon" onClick={() => handleOpenForm(client)} title="Editar" className="text-muted-foreground hover:text-amber-600">
                                 <Edit className="w-4 h-4" />
                             </Button>
@@ -786,19 +767,16 @@ const AdminDashboard: React.FC = () => {
                 </Pagination>
               </div>
             )}
-
           </CardContent>
         </Card>
 
-        {/* --- DETALHES MODAL (MANTIDO EXATAMENTE IGUAL) --- */}
+        {/* Modal Detalhes */}
         <Dialog open={!!viewingClientDetails} onOpenChange={() => setViewingClientDetails(null)}>
             <DialogContent className="max-w-4xl p-0 gap-0 overflow-hidden bg-background border border-border shadow-2xl rounded-2xl [&>button]:hidden">
-
               <DialogHeader className="sr-only">
                 <DialogTitle>Detalhes do Cliente</DialogTitle>
                 <DialogDescription>Visualização completa dos dados</DialogDescription>
               </DialogHeader>
-
               {viewingClientDetails && (
                 <div className="flex flex-col h-full">
                     <div className="relative bg-zinc-50/80 dark:bg-zinc-900/50 p-6 border-b border-border/60">
@@ -807,9 +785,7 @@ const AdminDashboard: React.FC = () => {
                                 <X className="w-5 h-5" />
                             </Button>
                          </div>
-                         <div className="absolute top-5 right-16">
-                            {getStatusBadge(viewingClientDetails.status)}
-                         </div>
+                         <div className="absolute top-5 right-16">{getStatusBadge(viewingClientDetails.status)}</div>
                          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
                             <div className="text-center sm:text-left space-y-1 mt-1">
                                 <h2 className="text-2xl font-bold tracking-tight text-foreground">{viewingClientDetails.name}</h2>
@@ -821,17 +797,16 @@ const AdminDashboard: React.FC = () => {
                             </div>
                          </div>
                     </div>
-
                     <div className="p-6 space-y-8">
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                            <div className="group relative p-3 rounded-xl border bg-card hover:bg-zinc-50/80 transition-all cursor-pointer shadow-sm" onClick={() => copyToClipboard(viewingClientDetails.email, 'Email')}>
+                            <div className="group relative p-3 rounded-xl border bg-card hover:bg-zinc-50/80 transition-all cursor-pointer shadow-sm" onClick={() => copyToClipboard(viewingClientDetails.email || '', 'Email')}>
                                 <div className="flex items-center gap-2 mb-1.5 text-muted-foreground group-hover:text-primary transition-colors">
                                     <Mail className="w-4 h-4" /> <span className="text-xs font-medium uppercase tracking-wider">Email</span>
                                 </div>
                                 <p className="text-sm font-semibold text-foreground break-all">{viewingClientDetails.email || '-'}</p>
                                 <Copy className="w-3 h-3 absolute top-3 right-3 opacity-0 group-hover:opacity-40 transition-opacity" />
                             </div>
-                            <div className="group relative p-3 rounded-xl border bg-card hover:bg-zinc-50/80 transition-all cursor-pointer shadow-sm" onClick={() => copyToClipboard(viewingClientDetails.phone, 'Telefone')}>
+                            <div className="group relative p-3 rounded-xl border bg-card hover:bg-zinc-50/80 transition-all cursor-pointer shadow-sm" onClick={() => copyToClipboard(viewingClientDetails.phone || '', 'Telefone')}>
                                 <div className="flex items-center gap-2 mb-1.5 text-muted-foreground group-hover:text-primary transition-colors">
                                     <Phone className="w-4 h-4" /> <span className="text-xs font-medium uppercase tracking-wider">Telefone</span>
                                 </div>
@@ -846,7 +821,6 @@ const AdminDashboard: React.FC = () => {
                                 <Copy className="w-3 h-3 absolute top-3 right-3 opacity-0 group-hover:opacity-40 transition-opacity" />
                             </div>
                         </div>
-
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                             <div className="md:col-span-1 space-y-4">
                                 <div className="bg-primary/5 p-4 rounded-xl border border-primary/20 flex flex-col gap-3 relative overflow-hidden group">
@@ -866,31 +840,22 @@ const AdminDashboard: React.FC = () => {
                                     </div>
                                 </div>
                             </div>
-
                             <div className="md:col-span-2 space-y-2">
-                                <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                                    <FileCheck className="w-3.5 h-3.5" /> Observações Internas
-                                </Label>
+                                <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><FileCheck className="w-3.5 h-3.5" /> Observações Internas</Label>
                                 <div className="bg-zinc-50/50 p-4 rounded-xl border border-dashed border-zinc-200 text-sm text-foreground/80 min-h-[100px] leading-relaxed">
                                     {viewingClientDetails.observations || <span className="text-muted-foreground/50 italic">Sem observações registradas.</span>}
                                 </div>
                             </div>
                         </div>
-
                         <div className="space-y-2">
-                             <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground">
-                                <ImageIcon className="w-3.5 h-3.5" /> Documento Vinculado
-                            </Label>
+                             <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><ImageIcon className="w-3.5 h-3.5" /> Documento Vinculado</Label>
                             {viewingClientDetails.imageUrl ? (
                                 <div className="group relative w-full h-24 bg-zinc-50 rounded-xl border flex items-center justify-between px-6 cursor-pointer" onClick={() => setViewingFile(viewingClientDetails.imageUrl!)}>
                                     <div className="flex items-center gap-4">
                                         <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center text-zinc-400">
                                             {isPdf(viewingClientDetails.imageUrl) ? <FileText className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}
                                         </div>
-                                        <div>
-                                            <p className="font-semibold text-sm">Visualizar Anexo</p>
-                                            <p className="text-xs text-muted-foreground">Clique para expandir</p>
-                                        </div>
+                                        <div><p className="font-semibold text-sm">Visualizar Anexo</p><p className="text-xs text-muted-foreground">Clique para expandir</p></div>
                                     </div>
                                     <Button variant="ghost" size="icon" className="rounded-full bg-white/50 hover:bg-white shadow-sm"><ExternalLink className="w-4 h-4" /></Button>
                                 </div>
@@ -899,43 +864,33 @@ const AdminDashboard: React.FC = () => {
                             )}
                         </div>
                     </div>
-                    <div className="p-4 bg-zinc-50/50 border-t flex justify-end">
-                        <Button variant="outline" onClick={() => setViewingClientDetails(null)} className="rounded-lg px-6">Fechar Ficha</Button>
-                    </div>
+                    <div className="p-4 bg-zinc-50/50 border-t flex justify-end"><Button variant="outline" onClick={() => setViewingClientDetails(null)} className="rounded-lg px-6">Fechar Ficha</Button></div>
                 </div>
               )}
             </DialogContent>
         </Dialog>
 
-        {/* Viewer de Arquivo permaneceria igual ao original */}
+        {/* Viewer de Arquivo */}
         <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
             <DialogContent className="fixed !left-0 !top-0 !translate-x-0 !translate-y-0 w-screen h-screen max-w-none p-0 bg-black/90 backdrop-blur-md border-none shadow-none focus:outline-none [&>button]:hidden flex items-center justify-center pointer-events-none z-[100]">
-                <DialogTitle className="sr-only">Visualização de Arquivo</DialogTitle>
                 <div className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto">
                   <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-2 p-2 bg-black/80 backdrop-blur-md rounded-full shadow-2xl border border-white/10">
                     {!isPdf(viewingFile || '') && (
-                      <>
-                        <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.max(0.5, s - 0.25))}><ZoomOut className="w-4 h-4" /></Button>
-                        <span className="text-xs font-medium text-white w-12 text-center select-none">{Math.round(zoomScale * 100)}%</span>
-                        <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.min(3, s + 0.25))}><ZoomIn className="w-4 h-4" /></Button>
-                        <div className="w-px h-4 bg-white/20 mx-1" />
-                      </>
+                      <><Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.max(0.5, s - 0.25))}><ZoomOut className="w-4 h-4" /></Button>
+                      <span className="text-xs font-medium text-white w-12 text-center select-none">{Math.round(zoomScale * 100)}%</span>
+                      <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.min(3, s + 0.25))}><ZoomIn className="w-4 h-4" /></Button>
+                      <div className="w-px h-4 bg-white/20 mx-1" /></>
                     )}
-                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => { /* logic */ }}><Download className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => {
+                        const link = document.createElement('a');
+                        link.href = viewingFile || '';
+                        link.download = `documento-${Date.now()}`;
+                        link.click();
+                    }}><Download className="w-4 h-4" /></Button>
                     <Button variant="ghost" size="icon" className="text-white hover:bg-emerald-500/80 h-8 w-8 rounded-full" onClick={() => setViewingFile(null)}><X className="w-4 h-4" /></Button>
                   </div>
                   <div className="w-full h-full flex items-center justify-center relative">
-                    {viewingFile && (
-                        isPdf(viewingFile) ? (
-                            <div className="w-[90%] h-[90%] bg-white rounded-lg shadow-2xl overflow-hidden">
-                                <object data={viewingFile} type="application/pdf" className="w-full h-full" />
-                            </div>
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center overflow-auto p-4">
-                                <img src={viewingFile} alt="Preview" className="rounded-lg shadow-2xl object-contain max-w-full max-h-full transition-transform" style={{ transform: `scale(${zoomScale})` }} />
-                            </div>
-                        )
-                    )}
+                    {viewingFile && (isPdf(viewingFile) ? (<div className="w-[90%] h-[90%] bg-white rounded-lg shadow-2xl overflow-hidden"><object data={viewingFile} type="application/pdf" className="w-full h-full" /></div>) : (<div className="w-full h-full flex items-center justify-center overflow-auto p-4"><img src={viewingFile} alt="Preview" className="rounded-lg shadow-2xl object-contain max-w-full max-h-full transition-transform" style={{ transform: `scale(${zoomScale})` }} /></div>))}
                   </div>
                 </div>
             </DialogContent>

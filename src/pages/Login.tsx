@@ -182,7 +182,7 @@ const Login: React.FC = () => {
         <div className="flex flex-col items-center justify-center gap-2">
           {/* Logo da Empresa */}
           <img 
-            src="/logo.png" 
+            src="../logo.png" 
             alt="Credinowe Logo" 
             className="h-6 w-auto object-contain opacity-90 drop-shadow-sm" 
           />
