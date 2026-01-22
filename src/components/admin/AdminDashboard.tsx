@@ -201,15 +201,14 @@ const AdminDashboard: React.FC = () => {
   // --- HANDLERS DE FORMULÁRIO ---
   const handleOpenForm = (client?: Client) => {
     if (client) {
-        // Modo Edição
         setEditingClient(client);
         setFormData({
             name: client.name,
             email: client.email,
             cpf: client.cpf,
             phone: client.phone,
-            sectorId: client.sectorId,
-            userId: client.userId,
+            sectorId: client.sectorId || '',
+            userId: client.userId || '',
             observations: client.observations || '',
             status: client.status,
             createdAt: toInputDate(new Date(client.createdAt)),
@@ -217,7 +216,6 @@ const AdminDashboard: React.FC = () => {
         });
         setFilePreview(client.imageUrl || null);
     } else {
-        // Modo Criação
         setEditingClient(null);
         const now = new Date();
         setFormData({
@@ -241,7 +239,7 @@ const AdminDashboard: React.FC = () => {
     e.preventDefault();
 
     let finalUserId = formData.userId;
-    if (!finalUserId && (isSupervisor || isAdmin) && user?.id) {
+    if (!finalUserId && user?.id) {
         finalUserId = user.id;
     }
 
@@ -265,10 +263,10 @@ const AdminDashboard: React.FC = () => {
     try {
         if (editingClient) {
             await api.post('/clientes.php?action=update', payload);
-            toast({ title: 'Sucesso', description: 'Cliente atualizado no banco.' });
+            toast({ title: 'Sucesso', description: 'Cliente atualizado' });
         } else {
             await api.post('/clientes.php?action=create', payload);
-            toast({ title: 'Sucesso', description: 'Cliente cadastrado no banco.' });
+            toast({ title: 'Sucesso', description: 'Cliente cadastrado' });
         }
         
         loadAllData();
@@ -369,7 +367,7 @@ const AdminDashboard: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">
-              {isSupervisor ? `Gestão - ${getSectorName(user.sectorId || '')}` : 'Dashboard Administrativo'}
+              {isSupervisor ? `Gestão - ${getSectorName(user.sectorId || '')}` : 'Clientes cadastrados'}
             </h1>
             <p className="text-muted-foreground mt-1">
               {isSupervisor ? 'Visualize os clientes do seu setor' : 'Gerencie clientes, setores e usuários do sistema'}
@@ -393,7 +391,6 @@ const AdminDashboard: React.FC = () => {
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
 
-                {/* --- ÁREA EXCLUSIVA ADMIN: EDIÇÃO DE DATAS --- */}
                 {isAdmin && editingClient && (
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="space-y-2">
@@ -465,7 +462,6 @@ const AdminDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Se estiver editando, mostra o Status para edição */}
                 {editingClient && (
                   <div className="space-y-2 bg-muted/50 p-4 rounded-lg border border-border shadow-sm">
                     <Label htmlFor="status" className="flex items-center gap-2 font-semibold">Status</Label>
@@ -483,15 +479,12 @@ const AdminDashboard: React.FC = () => {
                   </div>
                 )}
 
-                {/* ÁREA DE VÍNCULO (SETOR E CONSULTOR) */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-
-                  {/* Setor Opcional para Admin */}
                   {!isSupervisor && (
                     <div className="space-y-2">
                         <Label htmlFor="sector">Setor</Label>
                         <Select 
-                        value={formData.sectorId}
+                        value={formData.sectorId?.toString() || ""}
                         onValueChange={(val) => setFormData({ ...formData, sectorId: val })}
                         disabled={!!editingClient && isSupervisor}
                         >
@@ -500,18 +493,17 @@ const AdminDashboard: React.FC = () => {
                         </SelectTrigger>
                         <SelectContent>
                             {dbSectors.map((sector) => (
-                            <SelectItem key={sector.id} value={sector.id}>{sector.name}</SelectItem>
+                            <SelectItem key={sector.id} value={sector.id.toString()}>{sector.name}</SelectItem>
                             ))}
                         </SelectContent>
                         </Select>
                     </div>
                   )}
 
-                  {/* Consultor Opcional para Admin/Supervisor */}
                   <div className={cn("space-y-2", isSupervisor && "sm:col-span-2")}>
                     <Label htmlFor="user">Consultor Responsável</Label>
                     <Select 
-                      value={formData.userId}
+                      value={formData.userId?.toString() || ""}
                       onValueChange={(val) => setFormData({ ...formData, userId: val })}
                     >
                       <SelectTrigger>
@@ -521,7 +513,7 @@ const AdminDashboard: React.FC = () => {
                         {dbUsers
                             .filter(u => u.role === 'user' && (!isSupervisor || u.sectorId === user.sectorId))
                             .map((user) => (
-                          <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
+                          <SelectItem key={user.id} value={user.id.toString()}>{user.name}</SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
@@ -607,7 +599,7 @@ const AdminDashboard: React.FC = () => {
           ))}
         </div>
 
-        {/* Filters */}
+        {/* Filters Section ajustada para simetria */}
         <Card className="glass-card">
           <CardHeader className="pb-4">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -615,64 +607,73 @@ const AdminDashboard: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-              <div className="lg:col-span-2">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <input 
-                    placeholder="Buscar: Nome, CPF ou ID." 
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 pl-9" 
-                    value={searchTerm} 
-                    onChange={(e) => setSearchTerm(e.target.value)} 
-                  />
-                </div>
+            <div className="flex flex-col lg:flex-row items-center gap-3 w-full">
+              
+              <div className="relative w-full lg:flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <input 
+                  placeholder="Nome, CPF ou ID." 
+                  className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm pl-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" 
+                  value={searchTerm} 
+                  onChange={(e) => setSearchTerm(e.target.value)} 
+                />
               </div>
-              <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger><SelectValue placeholder="Status" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os Status</SelectItem>
-                  <SelectItem value="approved">Aprovado</SelectItem>
-                  <SelectItem value="pending">Pendente</SelectItem>
-                  <SelectItem value="rejected">Reprovado</SelectItem>
-                </SelectContent>
-              </Select>
 
-              {!isSupervisor && (
-                <Select value={sectorFilter} onValueChange={setSectorFilter}>
-                  <SelectTrigger><SelectValue placeholder="Setor" /></SelectTrigger>
+              <div className="w-full lg:flex-1">
+                <Select value={statusFilter} onValueChange={setStatusFilter}>
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Status" />
+                  </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Todos os Setores</SelectItem>
-                    {dbSectors.map((sector) => (
-                      <SelectItem key={sector.id} value={sector.id}>{sector.name}</SelectItem>
-                    ))}
+                    <SelectItem value="all">Todos os Status</SelectItem>
+                    <SelectItem value="approved">Aprovado</SelectItem>
+                    <SelectItem value="pending">Pendente</SelectItem>
+                    <SelectItem value="rejected">Reprovado</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+
+              {!isSupervisor && (
+                <div className="w-full lg:flex-1">
+                  <Select value={sectorFilter} onValueChange={setSectorFilter}>
+                    <SelectTrigger className="h-10">
+                      <SelectValue placeholder="Setor" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos os Setores</SelectItem>
+                      {dbSectors.map((sector) => (
+                        <SelectItem key={sector.id} value={sector.id.toString()}>{sector.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               )}
 
-              <Select value={userFilter} onValueChange={setUserFilter}>
-                <SelectTrigger><SelectValue placeholder="Funcionário" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Todos os Funcionários</SelectItem>
-                  {dbUsers
-                    .filter((u) => u.role === 'user' && (!isSupervisor || u.sectorId === user.sectorId))
-                    .map((user) => (
-                      <SelectItem key={user.id} value={user.id}>{user.name}</SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-
-              {/* BOTÃO DE LIMPAR FILTROS - Estilo idêntico ao dashboard */}
-              <div className="flex items-center justify-end">
-                <Button 
-                  variant="ghost" 
-                  size="icon" 
-                  onClick={clearFilters}
-                  className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-10 w-10 rounded-lg border border-input shadow-sm"
-                  title="Limpar Filtros"
-                >
-                  <Eraser className="w-5 h-5" />
-                </Button>
+              <div className="w-full lg:flex-1">
+                <Select value={userFilter} onValueChange={setUserFilter}>
+                  <SelectTrigger className="h-10">
+                    <SelectValue placeholder="Funcionário" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os Funcionários</SelectItem>
+                    {dbUsers
+                      .filter((u) => u.role === 'user' && (!isSupervisor || u.sectorId === user.sectorId))
+                      .map((user) => (
+                        <SelectItem key={user.id} value={user.id.toString()}>{user.name}</SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
               </div>
+
+              <Button 
+                variant="ghost" 
+                size="icon" 
+                onClick={clearFilters}
+                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-10 w-10 rounded-lg border border-input shadow-sm shrink-0"
+                title="Limpar Filtros"
+              >
+                <Eraser className="w-5 h-5" />
+              </Button>
             </div>
           </CardContent>
         </Card>
@@ -815,7 +816,7 @@ const AdminDashboard: React.FC = () => {
                                 <p className="text-sm text-muted-foreground flex items-center justify-center sm:justify-start gap-1">
                                     <span className="font-mono bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded text-xs">ID: {viewingClientDetails.id}</span>
                                     <span className="mx-1">•</span>
-                                    <span>{getSectorName(viewingClientDetails.sectorId)}</span>
+                                    <span className="mx-1">{getSectorName(viewingClientDetails.sectorId)}</span>
                                 </p>
                             </div>
                          </div>
@@ -881,22 +882,17 @@ const AdminDashboard: React.FC = () => {
                                 <ImageIcon className="w-3.5 h-3.5" /> Documento Vinculado
                             </Label>
                             {viewingClientDetails.imageUrl ? (
-                                <div className="group relative w-full h-24 bg-zinc-50 rounded-xl border overflow-hidden cursor-pointer hover:border-zinc-400 transition-all" onClick={() => setViewingFile(viewingClientDetails.imageUrl!)}>
-                                    {!isPdf(viewingClientDetails.imageUrl) && (
-                                        <div className="absolute inset-0 bg-cover bg-center opacity-20 blur-sm group-hover:scale-105 transition-transform duration-500" style={{ backgroundImage: `url(${viewingClientDetails.imageUrl})` }} />
-                                    )}
-                                    <div className="absolute inset-0 flex items-center justify-between px-6 z-10">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-12 h-12 bg-white rounded-lg shadow-sm flex items-center justify-center text-zinc-400">
-                                                {isPdf(viewingClientDetails.imageUrl) ? <FileText className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}
-                                            </div>
-                                            <div>
-                                                <p className="font-semibold text-sm">Visualizar Anexo</p>
-                                                <p className="text-xs text-muted-foreground">Clique para expandir</p>
-                                            </div>
+                                <div className="group relative w-full h-24 bg-zinc-50 rounded-xl border flex items-center justify-between px-6 cursor-pointer" onClick={() => setViewingFile(viewingClientDetails.imageUrl!)}>
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center text-zinc-400">
+                                            {isPdf(viewingClientDetails.imageUrl) ? <FileText className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}
                                         </div>
-                                        <Button variant="ghost" size="icon" className="rounded-full bg-white/50 hover:bg-white shadow-sm"><ExternalLink className="w-4 h-4" /></Button>
+                                        <div>
+                                            <p className="font-semibold text-sm">Visualizar Anexo</p>
+                                            <p className="text-xs text-muted-foreground">Clique para expandir</p>
+                                        </div>
                                     </div>
+                                    <Button variant="ghost" size="icon" className="rounded-full bg-white/50 hover:bg-white shadow-sm"><ExternalLink className="w-4 h-4" /></Button>
                                 </div>
                             ) : (
                                 <div className="w-full h-16 border border-dashed rounded-xl flex items-center justify-center text-xs text-muted-foreground bg-zinc-50/50">Nenhum documento anexado.</div>
@@ -911,8 +907,9 @@ const AdminDashboard: React.FC = () => {
             </DialogContent>
         </Dialog>
 
+        {/* Viewer de Arquivo permaneceria igual ao original */}
         <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
-            <DialogContent className="fixed !left-0 !top-0 !translate-x-0 !translate-y-0 w-screen h-screen max-w-none p-0 bg-emerald-950/90 backdrop-blur-md border-none shadow-none focus:outline-none [&>button]:hidden flex items-center justify-center pointer-events-none z-[100]">
+            <DialogContent className="fixed !left-0 !top-0 !translate-x-0 !translate-y-0 w-screen h-screen max-w-none p-0 bg-black/90 backdrop-blur-md border-none shadow-none focus:outline-none [&>button]:hidden flex items-center justify-center pointer-events-none z-[100]">
                 <DialogTitle className="sr-only">Visualização de Arquivo</DialogTitle>
                 <div className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto">
                   <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-2 p-2 bg-black/80 backdrop-blur-md rounded-full shadow-2xl border border-white/10">
@@ -924,18 +921,18 @@ const AdminDashboard: React.FC = () => {
                         <div className="w-px h-4 bg-white/20 mx-1" />
                       </>
                     )}
-                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => { /* Download Logic */ }}><Download className="w-4 h-4" /></Button>
+                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => { /* logic */ }}><Download className="w-4 h-4" /></Button>
                     <Button variant="ghost" size="icon" className="text-white hover:bg-emerald-500/80 h-8 w-8 rounded-full" onClick={() => setViewingFile(null)}><X className="w-4 h-4" /></Button>
                   </div>
-                  <div className="w-[95vw] h-[90vh] flex items-center justify-center relative mt-8">
+                  <div className="w-full h-full flex items-center justify-center relative">
                     {viewingFile && (
                         isPdf(viewingFile) ? (
-                            <div className="w-full h-full bg-white rounded-lg shadow-2xl overflow-hidden border border-border">
+                            <div className="w-[90%] h-[90%] bg-white rounded-lg shadow-2xl overflow-hidden">
                                 <object data={viewingFile} type="application/pdf" className="w-full h-full" />
                             </div>
                         ) : (
                             <div className="w-full h-full flex items-center justify-center overflow-auto p-4">
-                                <img src={viewingFile} alt="Preview" className="rounded-lg shadow-2xl object-contain max-w-full max-h-full" style={{ transform: `scale(${zoomScale})` }} />
+                                <img src={viewingFile} alt="Preview" className="rounded-lg shadow-2xl object-contain max-w-full max-h-full transition-transform" style={{ transform: `scale(${zoomScale})` }} />
                             </div>
                         )
                     )}

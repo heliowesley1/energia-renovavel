@@ -41,19 +41,16 @@ import {
   UserCog, 
   Plus, 
   Edit, 
-  Trash2, 
   Shield, 
   KeyRound,
   Power,
   Ban,
   Briefcase,
-  Users,
   Search,
   Filter,
   X,
   UserCheck,
-  Building2,
-  ChevronDown
+  Building2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -136,21 +133,11 @@ const UserManagement: React.FC = () => {
         toast({ title: 'Novo colaborador criado!' });
       }
 
-      await loadData(); // Recarga garantida do banco
+      await loadData();
       setIsDialogOpen(false);
       resetForm();
     } catch (err) {
       toast({ title: "Erro ao salvar", variant: "destructive" });
-    }
-  };
-
-  const handleDelete = async (id: string) => {
-    try {
-      await api.post('/usuarios.php?action=delete', { id });
-      setUsers((prev) => prev.filter((u) => u.id !== id));
-      toast({ title: 'Usuário excluído permanentemente' });
-    } catch (err) {
-      toast({ title: "Erro ao excluir", variant: "destructive" });
     }
   };
 
@@ -161,19 +148,15 @@ const UserManagement: React.FC = () => {
       setUsers((prev) => 
         prev.map((u) => u.id === user.id ? { ...u, active: newStatus } : u)
       );
+      
       toast({
         title: newStatus ? 'Acesso Liberado' : 'Acesso Inativado',
         description: `O usuário ${user.name} foi ${newStatus ? 'ativado' : 'inativado'}.`,
-        className: !newStatus ? "bg-amber-50 border-amber-200 text-amber-800" : "bg-emerald-50 border-emerald-200 text-emerald-800",
+        className: "bg-white border-slate-200 text-black", 
       });
     } catch (err) {
       toast({ title: "Erro ao alterar status", variant: "destructive" });
     }
-  };
-
-  const getSectorName = (sectorId?: string) => {
-    if (!sectorId) return '-';
-    return dbSectors.find((s) => s.id === sectorId)?.name || 'N/A';
   };
 
   const getFilteredUsers = () => {
@@ -271,14 +254,6 @@ const UserManagement: React.FC = () => {
                     >
                       <Edit className="w-4 h-4" />
                     </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 rounded-full text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                      onClick={() => handleDelete(user.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
                   </div>
                 </TableCell>
               </TableRow>
@@ -338,10 +313,10 @@ const UserManagement: React.FC = () => {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="sector">Setor Vinculado</Label>
-                    <Select value={formData.sectorId} onValueChange={(v) => setFormData({ ...formData, sectorId: v })}>
+                    <Select value={formData.sectorId?.toString() || ""} onValueChange={(v) => setFormData({ ...formData, sectorId: v })}>
                       <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
                       <SelectContent>
-                        {dbSectors.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                        {dbSectors.map((s) => (<SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -368,14 +343,14 @@ const UserManagement: React.FC = () => {
               <div className="p-2 bg-emerald-100 rounded-lg"><UserCheck className="w-5 h-5 text-emerald-600"/></div>
               <span className="text-sm font-medium">Ativos</span>
             </div>
-            <span className="text-2xl font-bold text-emerald-600">{activeCount}</span>
+            <span className="text-2xl font-bold text-black">{activeCount}</span>
           </Card>
           <Card className="glass-card p-4 flex items-center justify-between border-l-4 border-l-amber-500">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-amber-100 rounded-lg"><Ban className="w-5 h-5 text-amber-600"/></div>
               <span className="text-sm font-medium">Inativos</span>
             </div>
-            <span className="text-2xl font-bold text-amber-600">{inactiveCount}</span>
+            <span className="text-2xl font-bold text-black">{inactiveCount}</span>
           </Card>
         </div>
 
@@ -437,17 +412,29 @@ const UserManagement: React.FC = () => {
 
         <Card className="glass-card border-none shadow-none bg-transparent">
           <CardContent className="p-0 space-y-6">
+            {/* Seção de Administração agora recolhível */}
             {globalFilteredUsers.some(u => u.role === 'admin') && (
-                <div className="bg-card border rounded-xl shadow-sm overflow-hidden">
-                    <div className="bg-muted/30 px-6 py-4 border-b flex items-center justify-between">
-                        <h3 className="font-bold flex items-center gap-2 text-foreground">
-                            <Shield className="w-5 h-5 text-primary" /> Administração
-                        </h3>
-                        <Badge variant="secondary">{globalFilteredUsers.filter(u => u.role === 'admin').length}</Badge>
-                    </div>
-                    <div className="p-4">
-                        {renderUserTable(globalFilteredUsers.filter(u => u.role === 'admin'))}
-                    </div>
+                <div className="space-y-3">
+                    <Accordion type="multiple" className="w-full">
+                        <AccordionItem value="admin-section" className="bg-card border rounded-xl shadow-sm px-0">
+                            <div className="flex items-center px-4 py-3 hover:bg-muted/50 transition-colors rounded-t-xl">
+                                <AccordionTrigger className="hover:no-underline py-0 flex-1">
+                                    <span className="flex items-center gap-3 font-bold text-lg text-foreground">
+                                        <Shield className="w-5 h-5 text-primary" /> 
+                                        Administração
+                                        <Badge variant="secondary" className="ml-2">
+                                            {globalFilteredUsers.filter(u => u.role === 'admin').length}
+                                        </Badge>
+                                    </span>
+                                </AccordionTrigger>
+                            </div>
+                            <AccordionContent className="px-4 pb-4 pt-0 border-t">
+                                <div className="pt-4">
+                                    {renderUserTable(globalFilteredUsers.filter(u => u.role === 'admin'))}
+                                </div>
+                            </AccordionContent>
+                        </AccordionItem>
+                    </Accordion>
                 </div>
             )}
 
