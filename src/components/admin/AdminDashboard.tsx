@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import { useApi } from '@/hooks/useApi';
 import DashboardLayout from '@/components/layout/DashboardLayout';
@@ -275,24 +275,34 @@ const AdminDashboard: React.FC = () => {
     toast({ title: "Copiado!", description: `${label} copiado.` });
   };
 
-  const filteredClients = clients.filter((client) => {
-    if (isSupervisor && client.sectorId !== user?.sectorId) return false;
+  // --- LÓGICA DE FILTRAGEM COM REGRA DO ID (#) ---
+  const filteredClients = useMemo(() => {
+    return clients.filter((client) => {
+      if (isSupervisor && client.sectorId !== user?.sectorId) return false;
 
-    let matchesSearch = true;
-    if (searchTerm) {
-      const termLower = searchTerm.toLowerCase();
-      const nameMatch = client.name.toLowerCase().includes(termLower);
-      const cpfMatch = client.cpf.replace(/\D/g, '').includes(termLower.replace(/\D/g, ''));
-      const idMatch = client.id.toString().includes(termLower.replace('#', ''));
-      matchesSearch = nameMatch || cpfMatch || idMatch;
-    }
+      let matchesSearch = true;
+      if (searchTerm) {
+        const termLower = searchTerm.toLowerCase();
+        
+        // Regra solicitada: busca por ID só ativa se começar com #
+        const isSearchingId = termLower.startsWith('#');
+        
+        const nameMatch = !isSearchingId && client.name.toLowerCase().includes(termLower);
+        const cpfMatch = !isSearchingId && client.cpf.replace(/\D/g, '').includes(termLower.replace(/\D/g, ''));
+        
+        // Se tem #, busca apenas pelo ID. Se não tem #, busca apenas por Nome/CPF.
+        const idMatch = isSearchingId && client.id.toString() === termLower.replace('#', '');
+        
+        matchesSearch = nameMatch || cpfMatch || idMatch;
+      }
 
-    const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
-    const matchesSector = sectorFilter === 'all' || client.sectorId?.toString() === sectorFilter.toString();
-    const matchesUser = userFilter === 'all' || client.userId?.toString() === userFilter.toString();
+      const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
+      const matchesSector = sectorFilter === 'all' || client.sectorId?.toString() === sectorFilter.toString();
+      const matchesUser = userFilter === 'all' || client.userId?.toString() === userFilter.toString();
 
-    return matchesSearch && matchesStatus && matchesSector && matchesUser;
-  });
+      return matchesSearch && matchesStatus && matchesSector && matchesUser;
+    });
+  }, [clients, searchTerm, statusFilter, sectorFilter, userFilter, isSupervisor, user]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -318,14 +328,13 @@ const AdminDashboard: React.FC = () => {
     return pages;
   };
 
-  const statsSource = isSupervisor ? clients.filter(c => c.sectorId === user?.sectorId) : clients;
-
-  const stats = [
-    { title: 'Total', value: statsSource.length, icon: Users, color: 'text-primary', bg: 'bg-primary/10', borderClass: 'border-l-primary' },
-    { title: 'Aprovados', value: statsSource.filter((c) => c.status === 'approved').length, icon: UserCheck, color: 'text-emerald-600', bg: 'bg-emerald-100', borderClass: 'border-l-emerald-500' },
-    { title: 'Pendentes', value: statsSource.filter((c) => c.status === 'pending').length, icon: Clock, color: 'text-orange-600', bg: 'bg-orange-100', borderClass: 'border-l-orange-500' },
-    { title: 'Reprovados', value: statsSource.filter((c) => c.status === 'rejected').length, icon: UserX, color: 'text-red-600', bg: 'bg-red-100', borderClass: 'border-l-red-500' },
-  ];
+  // --- STATS DINÂMICOS BASEADOS NO FILTRO ---
+  const stats = useMemo(() => [
+    { title: 'Total', value: filteredClients.length, icon: Users, color: 'text-primary', bg: 'bg-primary/10', borderClass: 'border-l-primary' },
+    { title: 'Aprovados', value: filteredClients.filter((c) => c.status === 'approved').length, icon: UserCheck, color: 'text-emerald-600', bg: 'bg-emerald-100', borderClass: 'border-l-emerald-500' },
+    { title: 'Pendentes', value: filteredClients.filter((c) => c.status === 'pending').length, icon: Clock, color: 'text-orange-600', bg: 'bg-orange-100', borderClass: 'border-l-orange-500' },
+    { title: 'Reprovados', value: filteredClients.filter((c) => c.status === 'rejected').length, icon: UserX, color: 'text-red-600', bg: 'bg-red-100', borderClass: 'border-l-red-500' },
+  ], [filteredClients]);
 
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -352,7 +361,7 @@ const AdminDashboard: React.FC = () => {
               {isSupervisor ? `Gestão - ${getSectorName(user?.sectorId)}` : 'Clientes cadastrados'}
             </h1>
             <p className="text-muted-foreground mt-1">
-              {isSupervisor ? 'Visualize os clientes do seu setor' : 'Gerencie clientes, setores e usuários do sistema'}
+              {isSupervisor ? 'Visualize os clientes do seu setor' : 'Gerencie clientes do sistema'}
             </p>
           </div>
 
@@ -366,12 +375,11 @@ const AdminDashboard: React.FC = () => {
               <DialogHeader>
                 <DialogTitle>{editingClient ? 'Editar Cliente' : 'Cadastrar Novo Cliente'}</DialogTitle>
                 <DialogDescription>
-                  Preencha as informações do cliente e defina o consultor responsável.
+                  Preencha as informações do cliente.
                 </DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
 
-                {/* BLOCO DE DATAS - APENAS ADMIN PODE VER O CAMPO DE REGISTRO */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                    {isAdmin && (
                      <div className="space-y-2 p-3 bg-muted/40 rounded-lg border border-dashed">
@@ -596,7 +604,7 @@ const AdminDashboard: React.FC = () => {
               <div className="relative w-full lg:flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <input 
-                  placeholder="Nome, CPF ou ID." 
+                  placeholder="Nome, CPF ou #ID" 
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm pl-9 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring" 
                   value={searchTerm} 
                   onChange={(e) => setSearchTerm(e.target.value)} 
@@ -841,7 +849,7 @@ const AdminDashboard: React.FC = () => {
                                     </div>
                                     <div className="text-xs text-muted-foreground pt-2 border-t border-primary/10 relative z-10 flex items-center gap-2">
                                         <Clock className="w-3 h-3" />
-                                        Cadastrado em {format(new Date(viewingClientDetails.createdAt.replace(' ', 'T')), "dd/MM/yyyy 'às' HH:mm")}
+                                        Cadastrado em {viewingClientDetails.createdAt}
                                     </div>
                                 </div>
                             </div>

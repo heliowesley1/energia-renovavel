@@ -270,7 +270,7 @@ const UserManagement: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">Gestão de Usuários</h1>
-            <p className="text-muted-foreground mt-1">Administre hierarquias, supervisores e consultores.</p>
+            <p className="text-muted-foreground mt-1">Administre Usuários</p>
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
@@ -281,7 +281,7 @@ const UserManagement: React.FC = () => {
             <DialogContent className="sm:max-w-[500px]">
               <DialogHeader>
                 <DialogTitle>{editingUser ? 'Editar Acesso' : 'Criar Novo Acesso'}</DialogTitle>
-                <DialogDescription>Configure as permissões e dados de acesso do colaborador.</DialogDescription>
+                <DialogDescription>Configure as permissões e dados de acesso do usuário</DialogDescription>
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
                 <div className="space-y-2">

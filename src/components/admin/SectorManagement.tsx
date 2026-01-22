@@ -117,7 +117,7 @@ const SectorManagement: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">Gestão de Setores</h1>
-            <p className="text-muted-foreground mt-1">Crie e gerencie os setores da empresa diretamente no banco.</p>
+            <p className="text-muted-foreground mt-1">Crie e gerencie os setores da empresa</p>
           </div>
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>

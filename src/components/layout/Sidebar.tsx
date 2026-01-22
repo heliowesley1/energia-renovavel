@@ -41,9 +41,9 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
   ];
 
   const supervisorLinks = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Visão do Setor' },
-    { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios do Setor' },
-    { href: '/dashboard/clients', icon: Users, label: 'Clientes do Setor' },
+    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios' },
+    { href: '/dashboard/clients', icon: Users, label: 'Clientes' },
   ];
 
   const userLinks = [

@@ -240,63 +240,79 @@ const Reports: React.FC = () => {
   const getSectorName = (id: string) => dbSectors.find(s => s.id === id)?.name || 'N/A';
   const getUserName = (id: string) => dbUsers.find(u => u.id === id)?.name || 'N/A';
 
+  // --- EXPORTAÇÃO CLEAN, CENTRALIZADA E COMPACTA ---
   const handleExportExcel = () => {
-    toast({
-      title: "Exportando Excel",
-      description: `Gerando arquivo com ${totalClients} registros filtrados...`,
-    });
     if (filteredData.length === 0) {
       toast({ title: "Atenção", description: "Não há dados para exportar.", variant: "destructive" });
       return;
     }
+    
+    let periodoDesc = "Todo o Período";
+    if (periodPreset === 'today') periodoDesc = "Hoje";
+    else if (periodPreset === '7days') periodoDesc = "Últimos 7 dias";
+    else if (periodPreset === 'month') periodoDesc = "Este Mês";
+    else if (periodPreset === 'custom' && date?.from) {
+      periodoDesc = `${format(date.from, 'dd/MM/yy')} até ${date.to ? format(date.to, 'dd/MM/yy') : format(new Date(), 'dd/MM/yy')}`;
+    }
+
     try {
-      const tableHeaders = ["ID", "Cliente", "Email", "Telefone", "CPF", "Setor", "Consultor", "Status", "Data Cadastro", "Observações"];
+      const tableHeaders = ["DATA CADASTRO", "ID", "NOME DO CLIENTE", "CONTATO", "DOCUMENTO", "SETOR", "CONSULTOR", "STATUS", "OBSERVAÇÕES"];
       const tableRows = filteredData.map(client => `
-        <tr>
-          <td style="mso-number-format:'@'">${client.id}</td>
-          <td>${client.name}</td>
-          <td>${client.email}</td>
-          <td style="mso-number-format:'@'">${client.phone}</td>
-          <td style="mso-number-format:'@'">${client.cpf}</td>
-          <td>${getSectorName(client.sectorId)}</td>
-          <td>${getUserName(client.userId)}</td>
-          <td>${client.status === 'approved' ? 'Aprovado' : client.status === 'rejected' ? 'Reprovado' : 'Pendente'}</td>
-          <td>${format(new Date(client.createdAt), "dd/MM/yyyy HH:mm")}</td>
-          <td>${client.observations || '-'}</td>
+        <tr style="height: 16pt;">
+          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; font-size: 8pt; color: #475569;">${format(new Date(client.createdAt), "dd/MM/yyyy HH:mm")}</td>
+          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; mso-number-format:'@'; font-size: 8pt; color: #64748b;">#${client.id}</td>
+          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; font-size: 8pt; color: #0f172a;">${client.name.toUpperCase()}</td>
+          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; font-size: 8pt;">${client.phone || '-'}</td>
+          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; mso-number-format:'@'; font-size: 8pt;">${client.cpf}</td>
+          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; font-size: 8pt;">${getSectorName(client.sectorId)}</td>
+          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; font-size: 8pt;">${getUserName(client.userId)}</td>
+          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; font-size: 8pt; color: #000000;">
+            ${client.status === 'approved' ? 'APROVADO' : client.status === 'rejected' ? 'REPROVADO' : 'PENDENTE'}
+          </td>
+          <td style="border: 0.1pt solid #cbd5e1; text-align: center; vertical-align: middle; color: #475569; font-size: 7.5pt;">${client.observations || ''}</td>
         </tr>
       `).join('');
+
       const excelTemplate = `
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
-        <head><meta charset="UTF-8"><style>th{background-color:#059669;color:#fff;border:1px solid #047857;}td{border:1px solid #e5e7eb;}</style></head>
-        <body><table><thead><tr>${tableHeaders.map(h => `<th>${h}</th>`).join('')}</tr></thead><tbody>${tableRows}</tbody></table></body></html>
+        <head><meta charset="UTF-8">
+        <style>
+          body { font-family: 'Segoe UI', sans-serif; }
+          th { background-color: #dcfce7; color: #166534; border: 0.1pt solid #cbd5e1; font-size: 9pt; padding: 6px; text-align: center; vertical-align: middle; font-weight: bold; }
+        </style>
+        </head>
+        <body>
+          <table>
+            <tr><td colspan="9" style="font-size: 14pt; font-weight: bold; text-align: center; padding: 10px;">RELATÓRIO DE CLIENTES</td></tr>
+            <tr><td colspan="9" style="font-size: 8pt; text-align: center; color: #64748b; padding-bottom: 10px;">Período Filtrado: ${periodoDesc}</td></tr>
+            <tr style="height: 20pt;">${tableHeaders.map(h => `<th>${h}</th>`).join('')}</tr>
+            ${tableRows}
+          </table>
+        </body></html>
       `;
       const blob = new Blob([excelTemplate], { type: 'application/vnd.ms-excel' });
       const url = URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = url;
-      link.download = `Relatorio_Clientes_${format(new Date(), 'dd-MM-yyyy_HH-mm')}.xls`;
-      document.body.appendChild(link);
+      link.download = `Planilha_Clientes_${format(new Date(), 'ddMMyy')}.xls`;
       link.click();
-      document.body.removeChild(link);
       URL.revokeObjectURL(url);
-      toast({ title: "Sucesso", description: "Planilha gerada com sucesso!", className: "bg-emerald-50 border-emerald-200 text-emerald-800" });
-    } catch (error) {
-      toast({ title: "Erro", description: "Falha ao gerar o arquivo Excel.", variant: "destructive" });
-    }
+      
+      toast({ 
+        title: "Planilha exportada com sucesso", 
+        description: "O download do arquivo foi concluído.", 
+        className: "bg-white border-zinc-950 text-zinc-950 shadow-2xl font-medium"
+      });
+    } catch (e) { toast({ title: "Erro", description: "Falha na exportação.", variant: "destructive" }); }
   };
 
   const getPageNumbers = () => {
     const pages = [];
-    if (totalPages <= 5) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-      if (currentPage <= 3) {
-        pages.push(1, 2, 3, 4, '...', totalPages);
-      } else if (currentPage >= totalPages - 2) {
-        pages.push(1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
-      } else {
-        pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages);
-      }
+    if (totalPages <= 5) { for (let i = 1; i <= totalPages; i++) pages.push(i); } 
+    else {
+      if (currentPage <= 3) pages.push(1, 2, 3, 4, '...', totalPages);
+      else if (currentPage >= totalPages - 2) pages.push(1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
+      else pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages);
     }
     return pages;
   };
@@ -316,10 +332,10 @@ const Reports: React.FC = () => {
           <div>
             <Button 
               onClick={handleExportExcel}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all h-10 px-4"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all h-10 px-6 active:scale-95"
             >
               <FileSpreadsheet className="w-4 h-4 mr-2" />
-              Exportar Excel
+              Exportar
             </Button>
           </div>
         </div>
@@ -384,15 +400,8 @@ const Reports: React.FC = () => {
 
                 {periodPreset === 'custom' && (
                   <div className="flex items-center gap-2 w-full sm:w-auto animate-in fade-in slide-in-from-right-2">
-                    <div className="relative w-full sm:w-[130px]">
-                      <CalendarIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10 pointer-events-none" />
-                      <Input type="date" className="h-9 text-xs bg-background pl-8" value={date?.from ? format(date.from, 'yyyy-MM-dd') : ''} onChange={handleFromDateChange} />
-                    </div>
-                    <span className="text-muted-foreground text-xs">até</span>
-                    <div className="relative w-full sm:w-[130px]">
-                      <CalendarIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground z-10 pointer-events-none" />
-                      <Input type="date" className="h-9 text-xs bg-background pl-8" value={date?.to ? format(date.to, 'yyyy-MM-dd') : ''} onChange={handleToDateChange} />
-                    </div>
+                    <Input type="date" className="h-9 text-xs bg-background w-[130px]" value={date?.from ? format(date.from, 'yyyy-MM-dd') : ''} onChange={handleFromDateChange} />
+                    <Input type="date" className="h-9 text-xs bg-background w-[130px]" value={date?.to ? format(date.to, 'yyyy-MM-dd') : ''} onChange={handleToDateChange} />
                   </div>
                 )}
 
@@ -407,7 +416,7 @@ const Reports: React.FC = () => {
           <Card className="hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
-                <Target className="w-5 h-5 text-blue-600" /> Eficiência Geral
+                <Target className="w-5 h-5 text-emerald-500" /> Eficiência Geral
               </CardTitle>
             </CardHeader>
             <CardContent>
@@ -419,17 +428,12 @@ const Reports: React.FC = () => {
           <Card className="hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
-                <Activity className="w-5 h-5 text-purple-500" /> Entrada Recente
+                <Activity className="w-5 h-5 text-yellow-500" /> Entrada Recente
               </CardTitle>
-              <CardDescription className="text-sm font-medium text-foreground">
-                {newClientsToday} novos clientes
-              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <div className="h-2 w-full bg-purple-100 rounded-full mt-2 overflow-hidden">
-                <div className="h-full bg-purple-500 transition-all duration-1000 ease-out" style={{ width: `${Math.min((newClientsToday / (totalClients || 1)) * 100, 100)}%` }} />
-              </div>
-              <p className="text-xs text-muted-foreground mt-2">Cadastrados hoje</p>
+            <CardContent className="flex flex-col justify-start items-start">
+              <div className="text-3xl font-bold text-foreground">{newClientsToday}</div>
+              <p className="text-xs font-medium text-muted-foreground mt-1">Clientes cadastrados hoje</p>
             </CardContent>
           </Card>
 
@@ -438,7 +442,7 @@ const Reports: React.FC = () => {
               <CardTitle className="text-lg">Pendências</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-orange-600">{clientsByStatus.pending}</div>
+              <div className="text-3xl font-bold text-black">{clientsByStatus.pending}</div>
               <p className="text-xs text-muted-foreground">Aguardando análise</p>
             </CardContent>
           </Card>
@@ -453,12 +457,9 @@ const Reports: React.FC = () => {
               {consultantsRanking.length > 0 ? (
                 <div className="space-y-2">
                   {consultantsRanking.map((item, index) => (
-                    <div key={index} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-2">
-                        <span className={cn("w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold", index === 0 ? "bg-yellow-100 text-yellow-700" : index === 1 ? "bg-slate-100 text-slate-700" : index === 2 ? "bg-orange-100 text-orange-700" : "bg-muted text-muted-foreground")}>{index + 1}º</span>
-                        <span className="font-medium truncate max-w-[100px]">{item.name.split(' ')[0]}</span>
-                      </div>
-                      <span className="text-xs font-semibold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">{item.count}</span>
+                    <div key={index} className="flex justify-between text-sm">
+                      <span className="truncate max-w-[100px] font-medium">{index + 1}º {item.name.split(' ')[0]}</span>
+                      <span className="font-bold text-emerald-600">{item.count}</span>
                     </div>
                   ))}
                 </div>
@@ -486,17 +487,17 @@ const Reports: React.FC = () => {
                 </TableHeader>
                 <TableBody>
                   <TableRow>
-                    <TableCell className="font-medium text-emerald-600">Aprovados</TableCell>
+                    <TableCell className="font-medium text-black">Aprovados</TableCell>
                     <TableCell className="text-right">{clientsByStatus.approved}</TableCell>
                     <TableCell className="text-right">{totalClients > 0 ? ((clientsByStatus.approved / totalClients) * 100).toFixed(0) : 0}%</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell className="font-medium text-orange-600">Pendentes</TableCell>
+                    <TableCell className="font-medium text-black">Pendentes</TableCell>
                     <TableCell className="text-right">{clientsByStatus.pending}</TableCell>
                     <TableCell className="text-right">{totalClients > 0 ? ((clientsByStatus.pending / totalClients) * 100).toFixed(0) : 0}%</TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell className="font-medium text-red-600">Reprovados</TableCell>
+                    <TableCell className="font-medium text-black">Reprovados</TableCell>
                     <TableCell className="text-right">{clientsByStatus.rejected}</TableCell>
                     <TableCell className="text-right">{totalClients > 0 ? ((clientsByStatus.rejected / totalClients) * 100).toFixed(0) : 0}%</TableCell>
                   </TableRow>
@@ -508,7 +509,7 @@ const Reports: React.FC = () => {
           <Card className="glass-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                {!isSupervisor ? <Map className="w-5 h-5 text-indigo-500" /> : <UsersIcon className="w-5 h-5 text-secondary" />}
+                {!isSupervisor ? <Map className="w-5 h-5 text-yellow-500" /> : <UsersIcon className="w-5 h-5 text-yellow-500" />}
                 {!isSupervisor ? 'Performance dos Setores' : 'Desempenho da Equipe'}
               </CardTitle>
               <CardDescription>
@@ -523,29 +524,19 @@ const Reports: React.FC = () => {
                       <TableHead>{!isSupervisor ? 'Setor' : 'Consultor'}</TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       <TableHead className="text-right">Aprov.</TableHead>
-                      <TableHead className="text-right text-xs">Conv.</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {(!isSupervisor ? sectorPerformance : teamPerformance).length > 0 ? (
                       (!isSupervisor ? sectorPerformance : teamPerformance).map((stat) => (
                         <TableRow key={stat.name}>
-                          <TableCell className="font-medium truncate max-w-[120px]">
-                            {stat.name.length > 20 ? stat.name.substring(0, 20) + '...' : stat.name}
-                          </TableCell>
+                          <TableCell className="font-medium truncate max-w-[120px]">{stat.name}</TableCell>
                           <TableCell className="text-right">{stat.total}</TableCell>
-                          <TableCell className="text-right text-emerald-600 font-medium">{stat.approved}</TableCell>
-                          <TableCell className="text-right text-xs text-muted-foreground">
-                            {stat.total > 0 ? ((stat.approved / stat.total) * 100).toFixed(0) : 0}%
-                          </TableCell>
+                          <TableCell className="text-right text-emerald-600 font-bold">{stat.approved}</TableCell>
                         </TableRow>
                       ))
                     ) : (
-                      <TableRow>
-                        <TableCell colSpan={4} className="text-center text-muted-foreground py-4">
-                          Nenhum dado neste filtro
-                        </TableCell>
-                      </TableRow>
+                      <TableRow><TableCell colSpan={3} className="text-center py-4">Nenhum dado encontrado</TableCell></TableRow>
                     )}
                   </TableBody>
                 </Table>
@@ -562,7 +553,7 @@ const Reports: React.FC = () => {
                 <CardTitle className="flex items-center gap-2"><List className="w-5 h-5 text-primary" /> Relatório Detalhado</CardTitle>
                 <CardDescription>Listagem completa. Página {currentPage} de {totalPages || 1}.</CardDescription>
               </div>
-              <div className="text-sm text-muted-foreground">Total: <strong>{totalClients}</strong></div>
+              <div className="text-sm text-muted-foreground font-bold text-zinc-950">Total: {totalClients} registros</div>
             </div>
           </CardHeader>
           <CardContent>
@@ -572,9 +563,7 @@ const Reports: React.FC = () => {
                   <TableRow>
                     <TableHead>Cliente</TableHead>
                     <TableHead>CPF</TableHead>
-                    <TableHead>Telefone</TableHead>
                     <TableHead>Setor</TableHead>
-                    <TableHead>Consultor</TableHead>
                     <TableHead>Data Cadastro</TableHead>
                     <TableHead className="text-right">Status</TableHead>
                   </TableRow>
@@ -584,22 +573,20 @@ const Reports: React.FC = () => {
                     paginatedClients.map((client) => (
                       <TableRow key={client.id} className="hover:bg-muted/50">
                         <TableCell className="font-medium">{client.name}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground font-medium">{client.cpf}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground font-medium font-mono">{client.cpf}</TableCell>
                         <TableCell className="text-xs text-muted-foreground font-medium">{client.phone}</TableCell>
-                        <TableCell>{getSectorName(client.sectorId)}</TableCell>
-                        <TableCell>{getUserName(client.userId)}</TableCell>
-                        <TableCell>{format(new Date(client.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}</TableCell>
+                        <TableCell className="text-xs font-semibold">{getSectorName(client.sectorId)}</TableCell>
+                        <TableCell className="text-xs">{getUserName(client.userId)}</TableCell>
+                        <TableCell className="text-xs">{format(new Date(client.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}</TableCell>
                         <TableCell className="text-right">
-                          <Badge variant="outline" className={cn(client.status === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : client.status === 'rejected' ? 'bg-red-100 text-red-700 border-red-200' : 'bg-orange-100 text-orange-700 border-orange-200')}>
+                          <Badge variant="outline" className={cn(client.status === 'approved' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : client.status === 'rejected' ? 'bg-red-50 text-red-700 border-red-200' : 'bg-orange-50 text-orange-700 border-orange-200')}>
                             {client.status === 'approved' ? 'Aprovado' : client.status === 'rejected' ? 'Reprovado' : 'Pendente'}
                           </Badge>
                         </TableCell>
                       </TableRow>
                     ))
                   ) : (
-                    <TableRow>
-                      <TableCell colSpan={7} className="h-24 text-center text-muted-foreground">Nenhum cliente encontrado.</TableCell>
-                    </TableRow>
+                    <TableRow><TableCell colSpan={7} className="h-24 text-center">Nenhum cliente encontrado.</TableCell></TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -611,7 +598,7 @@ const Reports: React.FC = () => {
                   <PaginationContent>
                     <PaginationItem><PaginationPrevious onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)} className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} /></PaginationItem>
                     {getPageNumbers().map((page, index) => (
-                      <PaginationItem key={index}>{page === '...' ? (<PaginationEllipsis />) : (<PaginationLink isActive={currentPage === page} onClick={() => setCurrentPage(page as number)} className="cursor-pointer">{page}</PaginationLink>)}</PaginationItem>
+                      <PaginationItem key={index}>{page === '...' ? (<PaginationEllipsis />) : (<PaginationLink isActive={currentPage === page} onClick={() => typeof page === 'number' && setCurrentPage(page)} className="cursor-pointer">{page}</PaginationLink>)}</PaginationItem>
                     ))}
                     <PaginationItem><PaginationNext onClick={() => currentPage < totalPages && setCurrentPage(currentPage + 1)} className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'} /></PaginationItem>
                   </PaginationContent>
