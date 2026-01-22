@@ -68,6 +68,7 @@ import {
   Edit,
   Eraser,
   CalendarDays,
+  History,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -93,7 +94,6 @@ const AdminDashboard: React.FC = () => {
   );
   const [userFilter, setUserFilter] = useState<string>('all');
 
-  // Carregamento inicial do Banco de Dados
   const loadAllData = async () => {
     try {
       const [clientsData, sectorsData, usersData] = await Promise.all([
@@ -113,7 +113,6 @@ const AdminDashboard: React.FC = () => {
     loadAllData();
   }, []);
 
-  // --- FUNÇÃO PARA LIMPAR FILTROS ---
   const clearFilters = () => {
     setSearchTerm('');
     setStatusFilter('all');
@@ -127,16 +126,13 @@ const AdminDashboard: React.FC = () => {
     });
   };
 
-  // Detalhes Modal State
   const [viewingClientDetails, setViewingClientDetails] = useState<Client | null>(null);
   const [viewingFile, setViewingFile] = useState<string | null>(null);
   const [zoomScale, setZoomScale] = useState(1);
 
-  // Paginação State
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  // Form State (Add/Edit)
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [filePreview, setFilePreview] = useState<string | null>(null);
@@ -155,7 +151,6 @@ const AdminDashboard: React.FC = () => {
     updatedAt: '',
   });
 
-  // Inicializa valores ao abrir modal ou trocar perfil
   useEffect(() => {
     if (!editingClient && isFormOpen) {
         setFormData(prev => ({
@@ -171,18 +166,17 @@ const AdminDashboard: React.FC = () => {
   const toInputDate = (dateStr: string) => {
     if (!dateStr) return '';
     try {
-      const date = new Date(dateStr);
-      return date.toISOString().split('T')[0];
+      const date = new Date(dateStr.replace(' ', 'T'));
+      return isNaN(date.getTime()) ? '' : date.toISOString().split('T')[0];
     } catch (e) {
       return '';
     }
   };
 
-  // --- ARQUIVOS ---
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      const maxSize = 20 * 1024 * 1024; // 20MB
+      const maxSize = 20 * 1024 * 1024;
       if (file.size > maxSize) {
         toast({ title: "Arquivo muito grande", description: "O tamanho máximo permitido é de 20MB.", variant: "destructive" });
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -201,7 +195,6 @@ const AdminDashboard: React.FC = () => {
 
   const isPdf = (dataUrl: string) => dataUrl.startsWith('data:application/pdf') || dataUrl.endsWith('.pdf');
 
-  // --- HANDLERS DE FORMULÁRIO ---
   const handleOpenForm = (client?: Client) => {
     if (client) {
         setEditingClient(client);
@@ -215,7 +208,7 @@ const AdminDashboard: React.FC = () => {
             observations: client.observations || '',
             status: client.status,
             createdAt: toInputDate(client.createdAt),
-            updatedAt: toInputDate(client.updatedAt),
+            updatedAt: client.updatedAt || '',
         });
         setFilePreview(client.imageUrl || null);
     } else {
@@ -241,15 +234,14 @@ const AdminDashboard: React.FC = () => {
     e.preventDefault();
 
     const now = new Date();
-    const mysqlTime = now.toTimeString().split(' ')[0]; // HH:MM:SS
-    const mysqlNow = now.toISOString().slice(0, 10) + ' ' + mysqlTime;
+    const mysqlTime = now.toLocaleTimeString('pt-BR', { hour12: false }); 
+    const mysqlDate = now.toISOString().split('T')[0];
+    const mysqlNow = `${mysqlDate} ${mysqlTime}`;
 
     let finalUserId = formData.userId || user?.id;
 
-    // Lógica crucial: Preserva o horário original se estiver editando, ou usa o atual se for novo
-    const finalCreatedAt = formData.createdAt 
-      ? formData.createdAt + ' ' + (editingClient?.createdAt?.split(' ')[1] || mysqlTime)
-      : mysqlNow;
+    const originalTime = editingClient?.createdAt?.split(' ')[1] || mysqlTime;
+    const finalCreatedAt = formData.createdAt ? `${formData.createdAt} ${originalTime}` : mysqlNow;
 
     const payload = {
         ...formData,
@@ -282,12 +274,9 @@ const AdminDashboard: React.FC = () => {
     toast({ title: "Copiado!", description: `${label} copiado.` });
   };
 
-  // --- FILTER LOGIC ---
   const filteredClients = clients.filter((client) => {
-    // 1. Filtro de Supervisor (Setor fixo)
     if (isSupervisor && client.sectorId !== user?.sectorId) return false;
 
-    // 2. Filtro de Busca (Nome, CPF ou ID)
     let matchesSearch = true;
     if (searchTerm) {
       const termLower = searchTerm.toLowerCase();
@@ -297,19 +286,13 @@ const AdminDashboard: React.FC = () => {
       matchesSearch = nameMatch || cpfMatch || idMatch;
     }
 
-    // 3. Filtro de Status
     const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
-    
-    // 4. Filtro de Setor (Somente Admin)
     const matchesSector = sectorFilter === 'all' || client.sectorId?.toString() === sectorFilter.toString();
-    
-    // 5. Filtro de Usuário (Consultor)
     const matchesUser = userFilter === 'all' || client.userId?.toString() === userFilter.toString();
 
     return matchesSearch && matchesStatus && matchesSector && matchesUser;
   });
 
-  // --- PAGINAÇÃO ---
   useEffect(() => {
     setCurrentPage(1);
   }, [searchTerm, statusFilter, sectorFilter, userFilter]);
@@ -356,20 +339,19 @@ const AdminDashboard: React.FC = () => {
     return dbSectors.find(s => s.id.toString() === id.toString())?.name || '-';
   };
 
-  const getUserName = (id: any) => dbUsers.find(u => u.id.toString() === id.toString())?.name || 'N/A';
+  const getUserName = (id: any) => dbUsers.find(u => u.id.toString() === id?.toString())?.name || 'N/A';
 
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in pb-10">
-        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-              <h1 className="text-3xl font-display font-bold text-foreground">
-                {isSupervisor ? `Gestão - ${getSectorName(user?.sectorId)}` : 'Clientes cadastrados'}
-              </h1>
-              <p className="text-muted-foreground mt-1">
-                {isSupervisor ? 'Visualize os clientes do seu setor' : 'Gerencie clientes, setores e usuários do sistema'}
-              </p>
-            </div>
+          <div>
+            <h1 className="text-3xl font-display font-bold text-foreground">
+              {isSupervisor ? `Gestão - ${getSectorName(user?.sectorId)}` : 'Clientes cadastrados'}
+            </h1>
+            <p className="text-muted-foreground mt-1">
+              {isSupervisor ? 'Visualize os clientes do seu setor' : 'Gerencie clientes, setores e usuários do sistema'}
+            </p>
           </div>
 
           <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
@@ -387,14 +369,30 @@ const AdminDashboard: React.FC = () => {
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
 
-                <div className="space-y-2 p-3 bg-muted/40 rounded-lg border border-dashed">
-                  <Label htmlFor="createdAt" className="flex items-center gap-2"><CalendarDays className="w-4 h-4" /> Data de Registro</Label>
-                  <Input 
-                    id="createdAt" 
-                    type="date"
-                    value={formData.createdAt} 
-                    onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })} 
-                  />
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                   <div className="space-y-2 p-3 bg-muted/40 rounded-lg border border-dashed">
+                     <Label htmlFor="createdAt" className="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground">
+                       <CalendarDays className="w-3.5 h-3.5" /> Cadastro
+                     </Label>
+                     <Input 
+                       id="createdAt" 
+                       type="date"
+                       className="h-8 text-sm"
+                       value={formData.createdAt} 
+                       onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })} 
+                     />
+                   </div>
+
+                   {editingClient && (
+                     <div className="space-y-2 p-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-800">
+                       <Label className="flex items-center gap-2 text-xs font-bold uppercase text-blue-600 dark:text-blue-400">
+                         <History className="w-3.5 h-3.5" /> Última Atualização
+                       </Label>
+                       <div className="h-8 flex items-center text-xs font-semibold text-blue-700 dark:text-blue-300">
+                         {formData.updatedAt ? format(new Date(formData.updatedAt.replace(' ', 'T')), "dd/MM/yy 'às' HH:mm") : 'Sem registros'}
+                       </div>
+                     </div>
+                   )}
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -447,12 +445,12 @@ const AdminDashboard: React.FC = () => {
 
                 {editingClient && (
                   <div className="space-y-2 bg-muted/50 p-4 rounded-lg border border-border shadow-sm">
-                    <Label htmlFor="status" className="flex items-center gap-2 font-semibold">Status</Label>
+                    <Label htmlFor="status" className="flex items-center gap-2 font-semibold text-sm">Alterar Status</Label>
                     <Select 
                       value={formData.status} 
                       onValueChange={(val: any) => setFormData({ ...formData, status: val })}
                     >
-                      <SelectTrigger className="bg-background"><SelectValue /></SelectTrigger>
+                      <SelectTrigger className="bg-background h-9"><SelectValue /></SelectTrigger>
                       <SelectContent>
                         <SelectItem value="pending">Pendente</SelectItem>
                         <SelectItem value="approved">Aprovado</SelectItem>
@@ -470,7 +468,7 @@ const AdminDashboard: React.FC = () => {
                           value={formData.sectorId?.toString() || ""}
                           onValueChange={(val) => setFormData({ ...formData, sectorId: val, userId: '' })}
                         >
-                        <SelectTrigger>
+                        <SelectTrigger className="h-9">
                             <SelectValue placeholder="Selecione o setor" />
                         </SelectTrigger>
                         <SelectContent>
@@ -489,7 +487,7 @@ const AdminDashboard: React.FC = () => {
                       onValueChange={(val) => setFormData({ ...formData, userId: val })}
                       disabled={!formData.sectorId}
                     >
-                      <SelectTrigger>
+                      <SelectTrigger className="h-9">
                         <SelectValue placeholder={formData.sectorId ? "Escolha o consultor" : "Defina o setor"} />
                       </SelectTrigger>
                       <SelectContent>
@@ -514,24 +512,25 @@ const AdminDashboard: React.FC = () => {
                     onChange={(e) => setFormData({ ...formData, observations: e.target.value })}
                     placeholder="Informações adicionais..."
                     disabled={!!editingClient && isSupervisor}
+                    className="min-h-[80px]"
                   />
                 </div>
 
                 <div className="space-y-2">
-                  <Label>Anexo (Máx. 20MB)</Label>
+                  <Label className="text-xs font-bold uppercase text-muted-foreground">Anexo (Máx. 20MB)</Label>
                   <div className="border border-dashed rounded-lg p-4 bg-muted/20 hover:bg-muted/40 transition-colors">
                     <div className="flex flex-col items-center gap-3">
                       {!filePreview ? (
-                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} className="w-full" disabled={!!editingClient && isSupervisor}>
-                            <Upload className="w-4 h-4 mr-2" /> {editingClient ? "Substituir Arquivo" : "Anexar Arquivo"}
+                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} className="w-full h-8 text-xs" disabled={!!editingClient && isSupervisor}>
+                            <Upload className="w-3 h-3 mr-2" /> {editingClient ? "Substituir Arquivo" : "Anexar Arquivo"}
                         </Button>
                       ) : (
                         <div className="relative group w-full">
-                          <div className={cn("relative w-full rounded-lg overflow-hidden border bg-background flex items-center justify-center", isPdf(filePreview) ? "h-24" : "h-40")}>
+                          <div className={cn("relative w-full rounded-lg overflow-hidden border bg-background flex items-center justify-center", isPdf(filePreview) ? "h-20" : "h-32")}>
                             {isPdf(filePreview) ? (
                               <div className="flex flex-col items-center text-red-500">
-                                <FileText className="w-10 h-10" />
-                                <span className="text-xs font-medium text-muted-foreground mt-2">Documento PDF</span>
+                                <FileText className="w-8 h-8" />
+                                <span className="text-[10px] font-medium text-muted-foreground mt-1">PDF</span>
                               </div>
                             ) : (
                               <img src={filePreview} alt="Preview" className="w-full h-full object-contain" />
@@ -539,10 +538,10 @@ const AdminDashboard: React.FC = () => {
                           </div>
                           {!isSupervisor && (
                               <div className="flex items-center justify-between mt-2">
-                                <span className="text-xs text-emerald-600 font-medium flex items-center">
-                                {isPdf(filePreview) ? <FileText className="w-3 h-3 mr-1" /> : <ImageIcon className="w-3 h-3 mr-1" />} Arquivo atual
+                                <span className="text-[10px] text-emerald-600 font-bold flex items-center">
+                                {isPdf(filePreview) ? <FileText className="w-3 h-3 mr-1" /> : <ImageIcon className="w-3 h-3 mr-1" />} ARQUIVO ATUAL
                                 </span>
-                                <Button type="button" variant="destructive" size="sm" className="h-7 text-xs" onClick={removeFile}><X className="w-3 h-3 mr-1" /> Remover</Button>
+                                <Button type="button" variant="destructive" size="sm" className="h-6 px-2 text-[10px]" onClick={removeFile}>REMOVER</Button>
                             </div>
                           )}
                         </div>
@@ -552,9 +551,9 @@ const AdminDashboard: React.FC = () => {
                   </div>
                 </div>
 
-                <DialogFooter>
+                <DialogFooter className="pt-2">
                   <Button type="button" variant="outline" onClick={() => setIsFormOpen(false)}>Cancelar</Button>
-                  <Button type="submit" variant="hero">{editingClient ? 'Salvar' : 'Cadastrar'}</Button>
+                  <Button type="submit" variant="hero" className="min-w-[100px]">{editingClient ? 'Salvar Alterações' : 'Cadastrar'}</Button>
                 </DialogFooter>
               </form>
             </DialogContent>
@@ -676,12 +675,12 @@ const AdminDashboard: React.FC = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>ID</TableHead>
-                    <TableHead>Data</TableHead>
+                    <TableHead>Cadastro</TableHead>
                     <TableHead>Cliente</TableHead>
                     <TableHead>CPF</TableHead>
                     <TableHead>Telefone</TableHead>
                     <TableHead>Setor</TableHead>
-                    <TableHead>Responsável</TableHead>
+                    <TableHead>Consultor</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-center">Ações</TableHead>
                   </TableRow>
@@ -691,12 +690,12 @@ const AdminDashboard: React.FC = () => {
                     <TableRow key={client.id}>
                       <TableCell className="text-xs font-semibold text-muted-foreground">#{client.id}</TableCell>
                       <TableCell className="text-xs font-medium">
-                        {client.createdAt ? format(new Date(client.createdAt), "dd/MM/yyyy") : '-'}
+                        {client.createdAt ? format(new Date(client.createdAt.replace(' ', 'T')), "dd/MM/yyyy") : '-'}
                       </TableCell>
                       <TableCell>
-                        <div>
-                          <p className="font-medium">{client.name}</p>
-                          <p className="text-sm text-muted-foreground">{client.email}</p>
+                        <div className="max-w-[180px] truncate">
+                          <p className="font-medium truncate">{client.name}</p>
+                          <p className="text-[10px] text-muted-foreground truncate">{client.email}</p>
                         </div>
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground font-medium">{client.cpf}</TableCell>
@@ -704,7 +703,9 @@ const AdminDashboard: React.FC = () => {
                       <TableCell className="text-xs text-muted-foreground font-bold">
                         {getSectorName(client.sectorId)}
                       </TableCell>
-                      <TableCell className="text-xs text-muted-foreground font-medium">{getUserName(client.userId)}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground font-medium">
+                        {getUserName(client.userId)}
+                      </TableCell>
                       <TableCell>{getStatusBadge(client.status)}</TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-1">
@@ -821,10 +822,9 @@ const AdminDashboard: React.FC = () => {
                                 <Copy className="w-3 h-3 absolute top-3 right-3 opacity-0 group-hover:opacity-40 transition-opacity" />
                             </div>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                            <div className="md:col-span-1 space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
                                 <div className="bg-primary/5 p-4 rounded-xl border border-primary/20 flex flex-col gap-3 relative overflow-hidden group">
-                                    <div className="absolute top-0 right-0 w-20 h-20 bg-primary/5 rounded-bl-full -mr-4 -mt-4 transition-transform group-hover:scale-110" />
                                     <div className="flex items-center gap-3 relative z-10">
                                         <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shadow-sm">
                                             <ShieldCheck className="w-5 h-5" />
@@ -836,32 +836,30 @@ const AdminDashboard: React.FC = () => {
                                     </div>
                                     <div className="text-xs text-muted-foreground pt-2 border-t border-primary/10 relative z-10 flex items-center gap-2">
                                         <Clock className="w-3 h-3" />
-                                        Cadastrado em {format(new Date(viewingClientDetails.createdAt), "dd/MM/yy")}
+                                        Cadastrado em {format(new Date(viewingClientDetails.createdAt.replace(' ', 'T')), "dd/MM/yyyy 'às' HH:mm")}
+                                    </div>
+                                </div>
+
+                                <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-200/50 flex flex-col gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
+                                            <History className="w-5 h-5" />
+                                        </div>
+                                        <div>
+                                            <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">Sincronização</p>
+                                            <p className="text-xs font-semibold text-blue-900">
+                                              Última modificação: {viewingClientDetails.updatedAt ? format(new Date(viewingClientDetails.updatedAt.replace(' ', 'T')), "dd/MM/yy 'às' HH:mm") : 'Sem registros'}
+                                            </p>
+                                        </div>
                                     </div>
                                 </div>
                             </div>
-                            <div className="md:col-span-2 space-y-2">
+                            <div className="space-y-2">
                                 <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><FileCheck className="w-3.5 h-3.5" /> Observações Internas</Label>
-                                <div className="bg-zinc-50/50 p-4 rounded-xl border border-dashed border-zinc-200 text-sm text-foreground/80 min-h-[100px] leading-relaxed">
+                                <div className="bg-zinc-50/50 p-4 rounded-xl border border-dashed border-zinc-200 text-sm text-foreground/80 min-h-[120px] leading-relaxed">
                                     {viewingClientDetails.observations || <span className="text-muted-foreground/50 italic">Sem observações registradas.</span>}
                                 </div>
                             </div>
-                        </div>
-                        <div className="space-y-2">
-                             <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><ImageIcon className="w-3.5 h-3.5" /> Documento Vinculado</Label>
-                            {viewingClientDetails.imageUrl ? (
-                                <div className="group relative w-full h-24 bg-zinc-50 rounded-xl border flex items-center justify-between px-6 cursor-pointer" onClick={() => setViewingFile(viewingClientDetails.imageUrl!)}>
-                                    <div className="flex items-center gap-4">
-                                        <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center text-zinc-400">
-                                            {isPdf(viewingClientDetails.imageUrl) ? <FileText className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}
-                                        </div>
-                                        <div><p className="font-semibold text-sm">Visualizar Anexo</p><p className="text-xs text-muted-foreground">Clique para expandir</p></div>
-                                    </div>
-                                    <Button variant="ghost" size="icon" className="rounded-full bg-white/50 hover:bg-white shadow-sm"><ExternalLink className="w-4 h-4" /></Button>
-                                </div>
-                            ) : (
-                                <div className="w-full h-16 border border-dashed rounded-xl flex items-center justify-center text-xs text-muted-foreground bg-zinc-50/50">Nenhum documento anexado.</div>
-                            )}
                         </div>
                     </div>
                     <div className="p-4 bg-zinc-50/50 border-t flex justify-end"><Button variant="outline" onClick={() => setViewingClientDetails(null)} className="rounded-lg px-6">Fechar Ficha</Button></div>
