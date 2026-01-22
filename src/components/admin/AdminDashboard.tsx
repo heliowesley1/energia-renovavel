@@ -68,7 +68,7 @@ import {
   Edit,
   Eraser,
   CalendarDays,
-  History,
+  RefreshCw,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { format } from 'date-fns';
@@ -81,6 +81,7 @@ const AdminDashboard: React.FC = () => {
   const api = useApi();
   const isSupervisor = user?.role === 'supervisor';
   const isAdmin = user?.role === 'admin';
+  const isCommonUser = user?.role === 'user';
 
   // --- ESTADOS DE DADOS REAIS ---
   const [clients, setClients] = useState<Client[]>([]);
@@ -344,6 +345,7 @@ const AdminDashboard: React.FC = () => {
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in pb-10">
+        {/* Header */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">
@@ -369,24 +371,27 @@ const AdminDashboard: React.FC = () => {
               </DialogHeader>
               <form onSubmit={handleSubmit} className="space-y-4 mt-4">
 
+                {/* BLOCO DE DATAS - APENAS ADMIN ENXERGA O CAMPO DE REGISTRO */}
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                   <div className="space-y-2 p-3 bg-muted/40 rounded-lg border border-dashed">
-                     <Label htmlFor="createdAt" className="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground">
-                       <CalendarDays className="w-3.5 h-3.5" /> Cadastro
-                     </Label>
-                     <Input 
-                       id="createdAt" 
-                       type="date"
-                       className="h-8 text-sm"
-                       value={formData.createdAt} 
-                       onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })} 
-                     />
-                   </div>
+                   {isAdmin && (
+                     <div className="space-y-2 p-3 bg-muted/40 rounded-lg border border-dashed">
+                       <Label htmlFor="createdAt" className="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground">
+                         <CalendarDays className="w-3.5 h-3.5" /> Cadastro
+                       </Label>
+                       <Input 
+                         id="createdAt" 
+                         type="date"
+                         className="h-8 text-sm"
+                         value={formData.createdAt} 
+                         onChange={(e) => setFormData({ ...formData, createdAt: e.target.value })} 
+                       />
+                     </div>
+                   )}
 
                    {editingClient && (
-                     <div className="space-y-2 p-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-800">
+                     <div className={cn("space-y-2 p-3 bg-blue-50/50 dark:bg-blue-900/10 rounded-lg border border-blue-100 dark:border-blue-800", !isAdmin && "sm:col-span-2")}>
                        <Label className="flex items-center gap-2 text-xs font-bold uppercase text-blue-600 dark:text-blue-400">
-                         <History className="w-3.5 h-3.5" /> Última Atualização
+                         <RefreshCw className="w-3.5 h-3.5" /> Última Atualização
                        </Label>
                        <div className="h-8 flex items-center text-xs font-semibold text-blue-700 dark:text-blue-300">
                          {formData.updatedAt ? format(new Date(formData.updatedAt.replace(' ', 'T')), "dd/MM/yy 'às' HH:mm") : 'Sem registros'}
@@ -843,7 +848,7 @@ const AdminDashboard: React.FC = () => {
                                 <div className="bg-blue-50/50 p-4 rounded-xl border border-blue-200/50 flex flex-col gap-3">
                                     <div className="flex items-center gap-3">
                                         <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-600">
-                                            <History className="w-5 h-5" />
+                                            <RefreshCw className="w-5 h-5" />
                                         </div>
                                         <div>
                                             <p className="text-[10px] font-bold text-blue-700 uppercase tracking-widest">Sincronização</p>
@@ -860,6 +865,22 @@ const AdminDashboard: React.FC = () => {
                                     {viewingClientDetails.observations || <span className="text-muted-foreground/50 italic">Sem observações registradas.</span>}
                                 </div>
                             </div>
+                        </div>
+                        <div className="space-y-2">
+                             <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><ImageIcon className="w-3.5 h-3.5" /> Documento Vinculado</Label>
+                            {viewingClientDetails.imageUrl ? (
+                                <div className="group relative w-full h-24 bg-zinc-50 rounded-xl border flex items-center justify-between px-6 cursor-pointer" onClick={() => setViewingFile(viewingClientDetails.imageUrl!)}>
+                                    <div className="flex items-center gap-4">
+                                        <div className="w-12 h-12 bg-white rounded-lg flex items-center justify-center text-zinc-400">
+                                            {isPdf(viewingClientDetails.imageUrl) ? <FileText className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}
+                                        </div>
+                                        <div><p className="font-semibold text-sm">Visualizar Anexo</p><p className="text-xs text-muted-foreground">Clique para expandir</p></div>
+                                    </div>
+                                    <Button variant="ghost" size="icon" className="rounded-full bg-white/50 hover:bg-white shadow-sm"><ExternalLink className="w-4 h-4" /></Button>
+                                </div>
+                            ) : (
+                                <div className="w-full h-16 border border-dashed rounded-xl flex items-center justify-center text-xs text-muted-foreground bg-zinc-50/50">Nenhum documento anexado.</div>
+                            )}
                         </div>
                     </div>
                     <div className="p-4 bg-zinc-50/50 border-t flex justify-end"><Button variant="outline" onClick={() => setViewingClientDetails(null)} className="rounded-lg px-6">Fechar Ficha</Button></div>
