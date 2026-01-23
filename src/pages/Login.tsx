@@ -5,7 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Zap, Sun, Leaf, Mail, Lock } from 'lucide-react';
+import { Zap, Sun, Leaf, Mail, Lock, Cloud, Wind, BatteryCharging, Globe } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const Login: React.FC = () => {
@@ -65,19 +65,34 @@ const Login: React.FC = () => {
 
       {/* --- ÍCONES FLUTUANTES --- */}
       <div className="absolute inset-0 pointer-events-none overflow-hidden hidden sm:block">
-        <div className="absolute top-10 right-10 text-secondary/30 animate-float" style={{ animationDelay: '0s' }}>
-          <Sun size={64} />
-        </div>
-        <div className="absolute top-20 left-10 text-primary/20 animate-float" style={{ animationDelay: '1.5s' }}>
-          <Leaf size={52} />
-        </div>
-        <div className="absolute top-1/4 left-1/2 text-secondary/20 animate-float" style={{ animationDelay: '1s' }}>
-          <Zap size={40} />
-        </div>
-        <div className="absolute bottom-1/4 right-20 text-primary/20 animate-float" style={{ animationDelay: '2.5s' }}>
-          <Zap size={48} />
-        </div>
-      </div>
+  {/* Ícones originais com ajustes de delay */}
+  <div className="absolute top-10 right-10 text-secondary/30 animate-float" style={{ animationDelay: '0s' }}>
+    <Sun size={64} />
+  </div>
+  <div className="absolute top-20 left-10 text-primary/20 animate-float" style={{ animationDelay: '1.5s' }}>
+    <Leaf size={52} />
+  </div>
+  <div className="absolute top-1/4 left-1/2 text-secondary/20 animate-float" style={{ animationDelay: '1s' }}>
+    <Zap size={40} />
+  </div>
+  <div className="absolute bottom-1/4 right-20 text-primary/20 animate-float" style={{ animationDelay: '2.5s' }}>
+    <Zap size={48} />
+  </div>
+
+  {/* Novos Ícones Adicionados */}
+  <div className="absolute bottom-20 left-20 text-secondary/20 animate-float" style={{ animationDelay: '3s' }}>
+    <Cloud size={56} />
+  </div>
+  <div className="absolute top-1/3 left-[15%] text-primary/15 animate-float" style={{ animationDelay: '0.5s' }}>
+    <Wind size={44} />
+  </div>
+  <div className="absolute bottom-10 right-1/3 text-secondary/15 animate-float" style={{ animationDelay: '2s' }}>
+    <BatteryCharging size={38} />
+  </div>
+  <div className="absolute top-[60%] right-[10%] text-primary/10 animate-float" style={{ animationDelay: '4s' }}>
+    <Globe size={60} />
+  </div>
+</div>
 
       {/* --- ÁREA CENTRAL (flex-grow faz o main ocupar o espaço e empurrar o footer) --- */}
       <main className="flex-grow flex items-center justify-center p-6 relative z-10">
