@@ -678,7 +678,7 @@ const AdminDashboard: React.FC = () => {
             </div>
 
             {filteredClients.length > 0 && (
-              <div className="mt-4 border-t pt-4">
+              <div className="mt- border-t pt-4">
                 <Pagination>
                   <PaginationContent>
                     <PaginationItem><PaginationPrevious onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)} className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} /></PaginationItem>
