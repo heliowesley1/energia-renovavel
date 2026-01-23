@@ -1,9 +1,8 @@
 /**
  * ARQUIVO: src/components/user/UserDashboard.tsx
  * ATUALIZAÇÕES:
- * 1. Edição de Data: Adicionado campo para alterar 'Data de Registo' (createdAt).
- * 2. Persistência: Envio de datas formatadas para o MySQL (YYYY-MM-DD HH:MM:SS).
- * 3. Payload: Garantia de envio de userId e sectorId do contexto de autenticação.
+ * 1. Suporte a 3 Arquivos: Documento, Conta de Luz e Adicional.
+ * 2. Persistência: Envio das 3 URLs de imagem para o backend.
  */
 
 import React, { useState, useRef, useMemo, useEffect } from 'react';
@@ -184,10 +183,15 @@ const UserDashboard: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '', email: '', cpf: '', phone: '', observations: '',
     status: 'pending' as 'pending' | 'approved' | 'rejected',
-    createdAt: '', // Adicionado para controle de data
+    createdAt: '',
+    imageUrl: '',
+    imageUrl2: '',
+    imageUrl3: '',
   });
-  const [filePreview, setFilePreview] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const fileInputDocRef = useRef<HTMLInputElement>(null);
+  const fileInputLuzRef = useRef<HTMLInputElement>(null);
+  const fileInputExtraRef = useRef<HTMLInputElement>(null);
 
   const isFinalized = editingClient?.status === 'approved' || editingClient?.status === 'rejected';
 
@@ -239,10 +243,11 @@ const UserDashboard: React.FC = () => {
   };
 
   const resetForm = () => {
-    setFormData({ name: '', email: '', cpf: '', phone: '', observations: '', status: 'pending', createdAt: '' });
-    setFilePreview(null);
+    setFormData({ 
+        name: '', email: '', cpf: '', phone: '', observations: '', 
+        status: 'pending', createdAt: '', imageUrl: '', imageUrl2: '', imageUrl3: '' 
+    });
     setEditingClient(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   const handleOpenDialog = (client?: Client) => {
@@ -255,17 +260,18 @@ const UserDashboard: React.FC = () => {
         phone: client.phone || '',
         observations: client.observations || '', 
         status: client.status,
-        // Converte a data do banco para o formato de input date (YYYY-MM-DD)
         createdAt: client.createdAt ? client.createdAt.split(' ')[0] : '',
+        imageUrl: client.imageUrl || '',
+        imageUrl2: (client as any).imageUrl2 || '',
+        imageUrl3: (client as any).imageUrl3 || '',
       });
-      setFilePreview(client.imageUrl || null);
     } else {
       resetForm();
     }
     setIsDialogOpen(true);
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: 'imageUrl' | 'imageUrl2' | 'imageUrl3') => {
     const file = e.target.files?.[0];
     if (file) {
       const maxSize = 20 * 1024 * 1024;
@@ -274,24 +280,22 @@ const UserDashboard: React.FC = () => {
         return;
       }
       const reader = new FileReader();
-      reader.onloadend = () => setFilePreview(reader.result as string);
+      reader.onloadend = () => setFormData(prev => ({ ...prev, [field]: reader.result as string }));
       reader.readAsDataURL(file);
     }
   };
 
-  const removeFile = () => {
-    setFilePreview(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
+  const removeFile = (field: 'imageUrl' | 'imageUrl2' | 'imageUrl3') => {
+    setFormData(prev => ({ ...prev, [field]: '' }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
     const now = new Date();
-    const mysqlTime = now.toTimeString().split(' ')[0]; // HH:MM:SS
+    const mysqlTime = now.toTimeString().split(' ')[0]; 
     const mysqlNow = now.toISOString().slice(0, 10) + ' ' + mysqlTime;
 
-    // Se o usuário alterou a data no input, combina com o horário atual ou original
     const finalCreatedAt = formData.createdAt 
       ? formData.createdAt + ' ' + (editingClient?.createdAt?.split(' ')[1] || mysqlTime)
       : mysqlNow;
@@ -299,7 +303,6 @@ const UserDashboard: React.FC = () => {
     const payload = {
         ...formData,
         id: editingClient?.id,
-        imageUrl: filePreview,
         userId: user?.id,
         sectorId: user?.sectorId,
         createdAt: finalCreatedAt,
@@ -415,37 +418,42 @@ const UserDashboard: React.FC = () => {
                   <Textarea id="observations" value={formData.observations} onChange={(e) => setFormData({ ...formData, observations: e.target.value })} placeholder="Detalhes relevantes sobre o cliente..." />
                 </div>
 
-                <div className="space-y-2">
-                  <Label>Anexo (Máx. 20MB)</Label>
-                  <div className="border border-dashed rounded-lg p-4 bg-muted/20 hover:bg-muted/40 transition-colors">
-                    <div className="flex flex-col items-center gap-3">
-                      {!filePreview ? (
-                        <Button type="button" variant="outline" onClick={() => fileInputRef.current?.click()} className="w-full">
-                            <Upload className="w-4 h-4 mr-2" /> Anexar Documento
-                        </Button>
-                      ) : (
-                        <div className="relative group w-full">
-                          <div className={cn("relative w-full rounded-lg overflow-hidden border bg-background flex items-center justify-center", isPdf(filePreview) ? "h-24" : "h-40")}>
-                            {isPdf(filePreview) ? (
-                              <div className="flex flex-col items-center text-red-500">
-                                <FileText className="w-10 h-10" />
-                                <span className="text-xs font-medium text-muted-foreground mt-2">Documento PDF</span>
-                              </div>
-                            ) : (
-                              <img src={filePreview} alt="Preview" className="w-full h-full object-contain" />
-                            )}
-                          </div>
-                          <div className="flex items-center justify-between mt-2">
-                            <span className="text-xs text-emerald-600 font-medium flex items-center">
-                              {isPdf(filePreview) ? <FileText className="w-3 h-3 mr-1" /> : <ImageIcon className="w-3 h-3 mr-1" />} Arquivo pronto
-                            </span>
-                            <Button type="button" variant="destructive" size="sm" className="h-7 text-xs" onClick={removeFile}><X className="w-3 h-3 mr-1" /> Remover</Button>
-                          </div>
-                        </div>
-                      )}
-                      <input type="file" ref={fileInputRef} className="hidden" accept="image/*,application/pdf" onChange={handleFileUpload} />
+                {/* --- SEÇÃO DE 3 ARQUIVOS --- */}
+                <div className="space-y-3">
+                    <Label className="text-[10px] font-bold uppercase text-muted-foreground">Documentação (Máx. 20MB)</Label>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        {[
+                            { label: "Documento", field: "imageUrl" as const, ref: fileInputDocRef },
+                            { label: "Conta Luz", field: "imageUrl2" as const, ref: fileInputLuzRef },
+                            { label: "Adicional", field: "imageUrl3" as const, ref: fileInputExtraRef }
+                        ].map((item) => (
+                            <div key={item.field} className="relative group">
+                                <input type="file" ref={item.ref} className="hidden" accept="image/*,application/pdf" onChange={(e) => handleFileUpload(e, item.field)} />
+                                <Button 
+                                    type="button" 
+                                    variant={formData[item.field] ? "default" : "outline"} 
+                                    className={cn(
+                                        "w-full h-16 flex flex-col items-center justify-center gap-1 text-[10px] font-bold uppercase transition-all",
+                                        formData[item.field] ? "bg-emerald-600 hover:bg-emerald-700 border-none text-white shadow-sm" : "border-dashed border-2 hover:border-emerald-500 hover:bg-emerald-50/50"
+                                    )}
+                                    onClick={() => item.ref.current?.click()}
+                                >
+                                    {formData[item.field] ? <FileCheck className="w-5 h-5" /> : <Upload className="w-5 h-5 text-muted-foreground" />}
+                                    <span className="truncate w-full text-center">{item.label}</span>
+                                </Button>
+                                
+                                {formData[item.field] && (
+                                    <button 
+                                        type="button" 
+                                        onClick={() => removeFile(item.field)}
+                                        className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-0.5 shadow-md hover:bg-red-600 transition-colors z-10"
+                                    >
+                                        <X className="w-3 h-3" />
+                                    </button>
+                                )}
+                            </div>
+                        ))}
                     </div>
-                  </div>
                 </div>
 
                 <DialogFooter>
@@ -513,20 +521,32 @@ const UserDashboard: React.FC = () => {
                             </div>
                         </div>
 
-                        <div className="space-y-2">
-                             <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><ImageIcon className="w-3.5 h-3.5" /> Documento Vinculado</Label>
-                            {viewingClientDetails.imageUrl ? (
-                                <div className="group relative w-full h-24 bg-zinc-50 rounded-xl border overflow-hidden cursor-pointer hover:border-zinc-400 transition-all" onClick={() => setViewingFile(viewingClientDetails.imageUrl!)}>
-                                    {!isPdf(viewingClientDetails.imageUrl) && <div className="absolute inset-0 bg-cover bg-center opacity-20 blur-sm group-hover:scale-105 transition-transform duration-500" style={{ backgroundImage: `url(${viewingClientDetails.imageUrl})` }} />}
-                                    <div className="absolute inset-0 flex items-center justify-between px-6 z-10">
-                                        <div className="flex items-center gap-4">
-                                            <div className="w-12 h-12 bg-white rounded-lg shadow-sm flex items-center justify-center text-zinc-400">{isPdf(viewingClientDetails.imageUrl) ? <FileText className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}</div>
-                                            <div><p className="font-semibold text-sm">Visualizar Anexo</p><p className="text-xs text-muted-foreground">Clique para expandir</p></div>
+                        {/* --- EXIBIÇÃO DOS 3 DOCUMENTOS NOS DETALHES --- */}
+                        <div className="space-y-3">
+                            <Label className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-muted-foreground"><ImageIcon className="w-3.5 h-3.5" /> Documentos Vinculados</Label>
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                {[
+                                    { label: "Documento", url: viewingClientDetails.imageUrl },
+                                    { label: "Conta Luz", url: (viewingClientDetails as any).imageUrl2 },
+                                    { label: "Adicional", url: (viewingClientDetails as any).imageUrl3 }
+                                ].map((doc, idx) => (
+                                    doc.url ? (
+                                        <div 
+                                            key={idx} 
+                                            className="group relative h-24 bg-zinc-50 rounded-xl border flex flex-col items-center justify-center cursor-pointer hover:border-emerald-500 hover:bg-emerald-50/30 transition-all shadow-sm" 
+                                            onClick={() => setViewingFile(doc.url!)}
+                                        >
+                                            <div className="text-zinc-400 group-hover:text-emerald-600 transition-colors">
+                                                {isPdf(doc.url) ? <FileText className="w-8 h-8" /> : <ImageIcon className="w-8 h-8" />}
+                                            </div>
+                                            <span className="text-[10px] font-bold mt-1 uppercase text-zinc-500">{doc.label}</span>
+                                            <ExternalLink className="w-3 h-3 absolute top-2 right-2 opacity-0 group-hover:opacity-100 text-emerald-600 transition-opacity" />
                                         </div>
-                                        <Button variant="ghost" size="icon" className="rounded-full bg-white/50 hover:bg-white shadow-sm"><ExternalLink className="w-4 h-4" /></Button>
-                                    </div>
-                                </div>
-                            ) : (<div className="w-full h-16 border border-dashed rounded-xl flex items-center justify-center text-xs text-muted-foreground bg-zinc-50/50">Nenhum documento anexado.</div>)}
+                                    ) : (
+                                        <div key={idx} className="h-24 border border-dashed rounded-xl flex items-center justify-center bg-zinc-50/30 text-[9px] text-muted-foreground uppercase font-medium italic">Sem {doc.label}</div>
+                                    )
+                                ))}
+                            </div>
                         </div>
                     </div>
                     <div className="p-4 bg-zinc-50/50 border-t flex justify-end"><Button variant="outline" onClick={() => setViewingClientDetails(null)} className="rounded-lg px-6">Fechar Ficha</Button></div>
@@ -541,18 +561,24 @@ const UserDashboard: React.FC = () => {
                 <div className="relative w-full h-full flex flex-col items-center justify-center pointer-events-auto">
                   <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[110] flex items-center gap-2 p-2 bg-black/80 backdrop-blur-md rounded-full shadow-2xl border border-white/10">
                     {!isPdf(viewingFile || '') && (
-                      <><Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.max(0.5, s - 0.25))}><ZoomOut className="w-4 h-4" /></Button>
-                      <span className="text-xs font-medium text-white w-12 text-center select-none">{Math.round(zoomScale * 100)}%</span>
-                      <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.min(3, s + 0.25))}><ZoomIn className="w-4 h-4" /></Button>
-                      <div className="w-px h-4 bg-white/20 mx-1" /></>
+                      <>
+                        <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.max(0.5, s - 0.25))}><ZoomOut className="w-4 h-4" /></Button>
+                        <span className="text-xs font-medium text-white w-12 text-center select-none">{Math.round(zoomScale * 100)}%</span>
+                        <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={() => setZoomScale(s => Math.min(3, s + 0.25))}><ZoomIn className="w-4 h-4" /></Button>
+                        <div className="w-px h-4 bg-white/20 mx-1" />
+                      </>
                     )}
-                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={handleDownload}><Download className="w-4 h-4" /></Button>
-                    {isPdf(viewingFile || '') && <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={handleOpenNewTab}><ExternalLink className="w-4 h-4" /></Button>}
+                    <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={handleDownload} title="Baixar Arquivo"><Download className="w-4 h-4" /></Button>
+                    {isPdf(viewingFile || '') && <Button variant="ghost" size="icon" className="text-white hover:bg-white/20 h-8 w-8 rounded-full" onClick={handleOpenNewTab} title="Abrir em Nova Aba"><ExternalLink className="w-4 h-4" /></Button>}
                     <div className="w-px h-4 bg-white/20 mx-1" />
                     <Button variant="ghost" size="icon" className="text-white hover:bg-red-500/80 h-8 w-8 rounded-full" onClick={() => setViewingFile(null)}><X className="w-4 h-4" /></Button>
                   </div>
                   <div className="w-[95vw] h-[90vh] flex items-center justify-center relative mt-8">
-                    {viewingFile && (isPdf(viewingFile) ? (<div className="w-full h-full bg-white rounded-lg overflow-hidden border border-border"><object data={viewingFile} type="application/pdf" className="w-full h-full" /></div>) : (<div className="w-full h-full flex items-center justify-center overflow-auto p-4"><img src={viewingFile} className="rounded-lg shadow-2xl object-contain transition-transform duration-200 max-w-full max-h-full" style={{ transform: `scale(${zoomScale})` }} /></div>))}
+                    {viewingFile && (isPdf(viewingFile) ? (
+                        <div className="w-full h-full bg-white rounded-lg overflow-hidden border border-border"><object data={viewingFile} type="application/pdf" className="w-full h-full" /></div>
+                    ) : (
+                        <div className="w-full h-full flex items-center justify-center overflow-auto p-4"><img src={viewingFile} className="rounded-lg shadow-2xl object-contain transition-transform duration-200 max-w-full max-h-full" style={{ transform: `scale(${zoomScale})` }} /></div>
+                    ))}
                   </div>
                 </div>
             </DialogContent>
