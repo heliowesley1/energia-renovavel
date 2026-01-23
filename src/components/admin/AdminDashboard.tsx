@@ -286,14 +286,12 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  // --- CORREÇÃO DE COMUNICAÇÃO: Envia via URL E via Body para garantir recepção ---
   const handleDeleteClient = async (id: number) => {
     if (!isAdmin) {
       toast({ title: "Acesso Negado", description: "Apenas administradores podem excluir registros.", variant: "destructive" });
       return;
     }
     try {
-      // Forçamos o envio do ID tanto na URL quanto no objeto de corpo
       const response = await api.delete(`/clientes.php?id=${id}`, { id: id });
       
       if (response && (response.success === true || response.message)) {
@@ -313,6 +311,7 @@ const AdminDashboard: React.FC = () => {
     toast({ title: "Copiado!", description: `${label} copiado.` });
   };
 
+  // --- LÓGICA DE FILTRAGEM ---
   const filteredClients = useMemo(() => {
     return clients.filter((client) => {
       if (isSupervisor && client.sectorId?.toString() !== user?.sectorId?.toString()) return false;
@@ -320,11 +319,15 @@ const AdminDashboard: React.FC = () => {
       let matchesSearch = true;
       if (searchTerm) {
         const termLower = searchTerm.toLowerCase();
-        const isSearchingId = termLower.startsWith('#');
-        const nameMatch = !isSearchingId && client.name.toLowerCase().includes(termLower);
-        const cpfMatch = !isSearchingId && client.cpf.replace(/\D/g, '').includes(termLower.replace(/\D/g, ''));
-        const idMatch = isSearchingId && client.id.toString() === termLower.replace('#', '');
-        matchesSearch = nameMatch || cpfMatch || idMatch;
+        if (termLower.startsWith('#')) {
+          matchesSearch = client.id.toString() === termLower.replace('#', '');
+        } else {
+          const cleanCPF = client.cpf.replace(/\D/g, '');
+          const cleanSearch = termLower.replace(/\D/g, '');
+          const cpfMatch = cleanCPF.includes(cleanSearch) && cleanSearch !== '';
+          const nameMatch = client.name.toLowerCase().includes(termLower);
+          matchesSearch = nameMatch || cpfMatch;
+        }
       }
 
       const matchesStatus = statusFilter === 'all' || client.status === statusFilter;
@@ -386,7 +389,6 @@ const AdminDashboard: React.FC = () => {
     return dbSectors.find(s => s.id.toString() === id.toString())?.name || '-';
   };
 
-  // --- CORREÇÃO VISUAL: Garantindo que o nome da Usina apareça corretamente ---
   const getUsinaName = (id: any) => {
     if (!id || id === '0' || id === null) return '-'; 
     return dbUsinas.find(u => u.id.toString() === id.toString())?.name || '-';
@@ -402,9 +404,7 @@ const AdminDashboard: React.FC = () => {
             <h1 className="text-3xl font-display font-bold text-foreground">
               {isSupervisor ? `Gestão - ${getSectorName(user?.sectorId)}` : 'Clientes cadastrados'}
             </h1>
-            <p className="text-muted-foreground mt-1">
-              {isSupervisor ? 'Visualize os clientes do seu setor' : 'Gerencie clientes do sistema'}
-            </p>
+            <p className="text-muted-foreground mt-1">Gerencie clientes do sistema</p>
           </div>
 
           <Dialog open={isFormOpen} onOpenChange={setIsFormOpen}>
@@ -588,12 +588,8 @@ const AdminDashboard: React.FC = () => {
                     </Select>
                   </div>
                 )}
-                <div className="w-full lg:flex-1">
-                  <Select value={usinaFilter} onValueChange={setUsinaFilter}>
-                    <SelectTrigger className="bg-background h-10"><SelectValue placeholder="Todas Usinas" /></SelectTrigger>
-                    <SelectContent><SelectItem value="all">Todas Usinas</SelectItem>{dbUsinas.map((u) => (<SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>))}</SelectContent>
-                  </Select>
-                </div>
+                
+                {/* BOTÃO CONDICIONAL: APARECE AO SELECIONAR UM SETOR OU SE FOR SUPERVISOR */}
                 {(sectorFilter !== 'all' || isSupervisor) && (
                   <div className="w-full lg:flex-1 animate-in fade-in zoom-in duration-200">
                     <Select value={userFilter} onValueChange={setUserFilter}>
@@ -602,6 +598,14 @@ const AdminDashboard: React.FC = () => {
                     </Select>
                   </div>
                 )}
+
+                <div className="w-full lg:flex-1">
+                  <Select value={usinaFilter} onValueChange={setUsinaFilter}>
+                    <SelectTrigger className="bg-background h-10"><SelectValue placeholder="Todas Usinas" /></SelectTrigger>
+                    <SelectContent><SelectItem value="all">Todas Usinas</SelectItem>{dbUsinas.map((u) => (<SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>))}</SelectContent>
+                  </Select>
+                </div>
+
                 <div className="w-full lg:flex-1">
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
                     <SelectTrigger className="bg-background h-10"><SelectValue placeholder="Status" /></SelectTrigger>
@@ -610,7 +614,7 @@ const AdminDashboard: React.FC = () => {
                 </div>
                 <div className="w-full lg:flex-1 relative">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input placeholder="Nome ou CPF" className="pl-9 h-10" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                  <Input placeholder="Nome, CPF ou #ID" className="pl-9 h-10" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
                 </div>
                 <Button variant="ghost" size="icon" onClick={clearFilters} className="h-10 w-10 shrink-0 border hover:bg-destructive/10 hover:text-destructive"><Eraser className="w-5 h-5" /></Button>
               </div>
@@ -625,23 +629,38 @@ const AdminDashboard: React.FC = () => {
                 <TableHeader>
                   <TableRow>
                     <TableHead>ID</TableHead>
-                    <TableHead>Cadastro</TableHead>
+                    <TableHead>Data</TableHead>
                     <TableHead>Cliente</TableHead>
+                    <TableHead>CPF</TableHead>
+                    <TableHead>Telefone</TableHead>
+                    <TableHead>Consultor(a)</TableHead>
                     <TableHead>Usina</TableHead>
-                    <TableHead>Setor</TableHead>
                     <TableHead>Status</TableHead>
+                    <TableHead>Observação</TableHead>
                     <TableHead className="text-center">Ações</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {paginatedClients.map((client) => (
                     <TableRow key={client.id}>
-                      <TableCell className="text-xs font-semibold text-muted-foreground">#{client.id}</TableCell>
+                      <TableCell className="text-[11px] font-semibold truncate text-muted-foreground">#{client.id}</TableCell>
                       <TableCell className="text-xs font-medium">{client.createdAt ? format(new Date(client.createdAt.replace(' ', 'T')), "dd/MM/yyyy") : '-'}</TableCell>
-                      <TableCell><div className="max-w-[180px] truncate"><p className="font-medium truncate">{client.name}</p></div></TableCell>
+                      <TableCell>
+                        <div className="flex flex-col min-w-[150px]">
+                          <span className="font-medium text-sm truncate">{client.name}</span>
+                          <span className="text-[10px] text-muted-foreground truncate">{client.email || 'Sem email'}</span>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-[11px] font-semibold truncate text-muted-foreground">{client.cpf}</TableCell>
+                      <TableCell className="text-[11px] font-semibold truncate text-muted-foreground">{client.phone || '-'}</TableCell>
+                      <TableCell className="text-xs font-medium">{getUserName(client.userId)}</TableCell>
                       <TableCell className="text-xs font-bold text-muted-foreground">{getUsinaName((client as any).usinaId)}</TableCell>
-                      <TableCell className="text-xs font-bold">{getSectorName(client.sectorId)}</TableCell>
                       <TableCell>{getStatusBadge(client.status)}</TableCell>
+                      <TableCell>
+                        <div className="max-w-[150px] truncate text-[10px] text-muted-foreground" title={client.observations}>
+                          {client.observations || '-'}
+                        </div>
+                      </TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-1">
                             <Button variant="ghost" size="icon" onClick={() => setViewingClientDetails(client)} title="Ver Detalhes"><Eye className="w-4 h-4" /></Button>
@@ -689,6 +708,7 @@ const AdminDashboard: React.FC = () => {
           </CardContent>
         </Card>
 
+        {/* --- CARD DETALHES --- */}
         <Dialog open={!!viewingClientDetails} onOpenChange={() => setViewingClientDetails(null)}>
             <DialogContent className="max-w-4xl p-0 gap-0 overflow-hidden bg-background border border-border shadow-2xl rounded-2xl [&>button]:hidden">
               <DialogHeader className="sr-only"><DialogTitle>Detalhes</DialogTitle></DialogHeader>
@@ -698,17 +718,16 @@ const AdminDashboard: React.FC = () => {
                          <div className="absolute top-4 right-4 z-50">
                             <Button variant="ghost" size="icon" onClick={() => setViewingClientDetails(null)} className="rounded-full bg-zinc-200/50 hover:bg-emerald-500 hover:text-white transition-all w-9 h-9"><X className="w-5 h-5" /></Button>
                          </div>
-                         <div className="absolute top-5 right-16">{getStatusBadge(viewingClientDetails.status)}</div>
                          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
                             <div className="text-center sm:text-left space-y-1 mt-1">
                                 <h2 className="text-2xl font-bold tracking-tight text-foreground">{viewingClientDetails.name}</h2>
-                                <p className="text-sm text-muted-foreground flex items-center justify-center sm:justify-start gap-1">
-                                    <span className="font-mono bg-zinc-100 dark:bg-zinc-900 px-1.5 py-0.5 rounded text-xs">ID: {viewingClientDetails.id}</span>
+                                <div className="text-sm text-muted-foreground flex flex-wrap items-center justify-center sm:justify-start gap-1">
+                                    <span className="text-sm font-semibold truncate text-foreground">ID: {viewingClientDetails.id}</span>
                                     <span className="mx-1">•</span>
                                     <span>{getSectorName(viewingClientDetails.sectorId)}</span>
                                     <span className="mx-1">•</span>
                                     <span className="font-bold text-primary">Usina: {getUsinaName((viewingClientDetails as any).usinaId)}</span>
-                                </p>
+                                </div>
                             </div>
                          </div>
                     </div>
@@ -740,7 +759,7 @@ const AdminDashboard: React.FC = () => {
                             </div>
                             <div className="space-y-2">
                                 <Label className="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground"><FileCheck className="w-3.5 h-3.5" /> Observações Internas</Label>
-                                <div className="bg-zinc-50/50 p-4 rounded-xl border border-dashed text-sm text-foreground/80 min-h-[100px] leading-relaxed p-4">{viewingClientDetails.observations || <span className="text-muted-foreground/50 italic">Sem observações registradas.</span>}</div>
+                                <div className="bg-zinc-50/50 p-4 rounded-xl border border-dashed text-sm text-foreground/80 min-h-[100px] leading-relaxed">{viewingClientDetails.observations || <span className="text-muted-foreground/50 italic">Sem observações registradas.</span>}</div>
                             </div>
                         </div>
                         <div className="space-y-3">

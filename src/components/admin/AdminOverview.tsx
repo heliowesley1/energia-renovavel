@@ -9,7 +9,7 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { format, subDays, startOfMonth, endOfMonth, isSameDay } from 'date-fns';
+import { format, subDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfDay, endOfDay } from 'date-fns';
 import { type DateRange } from 'react-day-picker';
 import { 
   Users, 
@@ -17,21 +17,19 @@ import {
   TrendingUp, 
   CheckCircle2, 
   Clock,
-  AlertCircle,
   Eraser,
   BarChart3,
-  Calendar as CalendarIcon,
   Zap,
-  Factory,
   FileSignature
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+// Importações necessárias para o gráfico
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const AdminOverview: React.FC = () => {
   const { user } = useAuth();
   const api = useApi();
   const isSupervisor = user?.role === 'supervisor';
-  const isAdmin = user?.role === 'admin';
 
   // --- ESTADOS DE DADOS REAIS ---
   const [dbClients, setDbClients] = useState<any[]>([]);
@@ -39,63 +37,64 @@ const AdminOverview: React.FC = () => {
   const [dbSectors, setDbSectors] = useState<any[]>([]);
   const [dbUsinas, setDbUsinas] = useState<any[]>([]);
 
-  // Carregamento de dados inicial único
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        // Busca os dados de forma individual para evitar que um erro em 'usinas' trave tudo
         const [resClients, resUsers, resSectors, resUsinas] = await Promise.all([
           api.get('/clientes.php').catch(() => []),
           api.get('/usuarios.php').catch(() => []),
           api.get('/setores.php').catch(() => []),
           api.get('/usinas.php').catch(() => [])
         ]);
-
-        // Valida se o que recebeu é um array antes de salvar no estado
         setDbClients(Array.isArray(resClients) ? resClients : []);
         setDbUsers(Array.isArray(resUsers) ? resUsers : []);
         setDbSectors(Array.isArray(resSectors) ? resSectors : []);
         setDbUsinas(Array.isArray(resUsinas) ? resUsinas : []);
-
       } catch (error) {
         console.error("Erro ao processar dados do dashboard:", error);
       }
     };
     loadDashboardData();
-  }, []); // Dependência vazia para evitar loops de rede
+  }, []);
 
   // --- Estados dos Filtros ---
-  const [selectedSector, setSelectedSector] = useState<string>(
-    isSupervisor && user?.sectorId ? user.sectorId.toString() : 'all'
-  );
+  const [selectedSector, setSelectedSector] = useState<string>(isSupervisor && user?.sectorId ? user.sectorId.toString() : 'all');
   const [selectedUsina, setSelectedUsina] = useState<string>('all');
   const [selectedUser, setSelectedUser] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [periodPreset, setPeriodPreset] = useState<string>('all');
   const [date, setDate] = useState<DateRange | undefined>();
 
+  // --- Lógica do Gráfico de Produção (Igual à página de Relatórios) ---
+  const chartData = useMemo(() => {
+    const days = eachDayOfInterval({
+      start: startOfMonth(new Date()),
+      end: endOfMonth(new Date()),
+    });
+
+    return days.map(day => {
+      const count = dbClients.filter(c => {
+        const cDate = new Date(c.createdAt);
+        return format(cDate, 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd');
+      }).length;
+      return {
+        date: format(day, 'dd/MM'),
+        quantidade: count,
+      };
+    });
+  }, [dbClients]);
+
   // --- Handlers ---
   const handlePeriodPresetChange = (value: string) => {
     setPeriodPreset(value);
     const today = new Date();
     switch (value) {
-      case 'today': setDate({ from: today, to: today }); break;
+      case 'today': setDate({ from: startOfDay(today), to: endOfDay(today) }); break;
       case '7days': setDate({ from: subDays(today, 7), to: today }); break;
       case 'month': setDate({ from: startOfMonth(today), to: endOfMonth(today) }); break;
+      case 'custom': break; 
       case 'all': setDate(undefined); break;
     }
-  };
-
-  const handleFromDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newVal = e.target.value;
-    const newDate = newVal ? new Date(newVal + 'T00:00:00') : undefined;
-    setDate(prev => ({ ...prev, from: newDate }));
-  };
-
-  const handleToDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const newVal = e.target.value;
-    const newDate = newVal ? new Date(newVal + 'T23:59:59') : undefined;
-    setDate(prev => ({ ...prev, to: newDate }));
   };
 
   const clearFilters = () => {
@@ -110,23 +109,17 @@ const AdminOverview: React.FC = () => {
   // --- Lógica de Filtragem ---
   const filteredData = useMemo(() => {
     return dbClients.filter(client => {
-      const matchSector = isSupervisor 
-        ? client.sectorId?.toString() === user?.sectorId?.toString()
-        : (selectedSector === 'all' || client.sectorId?.toString() === selectedSector);
-
+      const matchSector = isSupervisor ? client.sectorId?.toString() === user?.sectorId?.toString() : (selectedSector === 'all' || client.sectorId?.toString() === selectedSector);
       const matchUsina = selectedUsina === 'all' || client.usinaId?.toString() === selectedUsina;
       const matchUser = selectedUser === 'all' || client.userId?.toString() === selectedUser;
       const matchStatus = selectedStatus === 'all' || client.status === selectedStatus;
-      
       let matchDate = true;
       if (date?.from) {
         const clientDate = new Date(client.createdAt);
-        const fromDate = new Date(date.from).setHours(0, 0, 0, 0);
         if (date.to) {
-          const toDate = new Date(date.to).setHours(23, 59, 59, 999);
-          matchDate = clientDate.getTime() >= fromDate && clientDate.getTime() <= toDate;
+          matchDate = clientDate >= startOfDay(date.from) && clientDate <= endOfDay(date.to);
         } else {
-          matchDate = clientDate.getTime() >= fromDate;
+          matchDate = clientDate >= startOfDay(date.from);
         }
       }
       return matchSector && matchUsina && matchUser && matchStatus && matchDate;
@@ -167,7 +160,7 @@ const AdminOverview: React.FC = () => {
           </div>
         </div>
 
-        {/* --- BARRA DE FILTROS ALINHADA --- */}
+        {/* --- BARRA DE FILTROS IGUAL AOS RELATÓRIOS --- */}
         <Card className="bg-muted/40 border-muted-foreground/20 shadow-sm w-full">
           <CardContent className="p-4">
             <div className="flex flex-col lg:flex-row items-center gap-4">
@@ -230,9 +223,33 @@ const AdminOverview: React.FC = () => {
                       <SelectItem value="today">Hoje</SelectItem>
                       <SelectItem value="7days">Últimos 7 dias</SelectItem>
                       <SelectItem value="month">Este Mês</SelectItem>
+                      <SelectItem value="custom">Período Personalizado</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
+
+                {/* --- CAMPOS DE DATA PERSONALIZADA (ESTILO RELATÓRIOS) --- */}
+                {periodPreset === 'custom' && (
+                  <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-300">
+                    <Input 
+                      type="date" 
+                      className="h-10 bg-background w-auto" 
+                      onChange={(e) => {
+                        const d = e.target.value ? new Date(e.target.value + 'T00:00:00') : undefined;
+                        setDate(prev => ({ ...prev, from: d }));
+                      }}
+                    />
+                    <span className="text-muted-foreground text-xs font-bold uppercase">Até</span>
+                    <Input 
+                      type="date" 
+                      className="h-10 bg-background w-auto" 
+                      onChange={(e) => {
+                        const d = e.target.value ? new Date(e.target.value + 'T23:59:59') : undefined;
+                        setDate(prev => ({ ...prev, to: d }));
+                      }}
+                    />
+                  </div>
+                )}
 
                 <Button variant="ghost" size="icon" onClick={clearFilters} className="h-10 w-10 shrink-0 border border-input hover:bg-destructive/10 hover:text-destructive">
                   <Eraser className="w-5 h-5" />
@@ -262,7 +279,7 @@ const AdminOverview: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="flex justify-between items-end">
-                <div className="text-3xl font-bold">{formalized}</div>
+                <div className="text-3xl font-bold text-emerald-600">{formalized}</div>
                 <div className="text-xs font-medium bg-emerald-100 text-emerald-700 px-2 py-1 rounded">{formalizedPerc.toFixed(1)}%</div>
               </div>
               <Progress value={formalizedPerc} className="h-1 mt-3 bg-emerald-100 [&>div]:bg-emerald-500" />
@@ -276,7 +293,7 @@ const AdminOverview: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="flex justify-between items-end">
-                <div className="text-3xl font-bold">{waiting}</div>
+                <div className="text-3xl font-bold text-indigo-600">{waiting}</div>
                 <div className="text-xs font-medium bg-indigo-100 text-indigo-700 px-2 py-1 rounded">{waitingPerc.toFixed(1)}%</div>
               </div>
               <Progress value={waitingPerc} className="h-1 mt-3 bg-indigo-100 [&>div]:bg-indigo-500" />
@@ -290,7 +307,7 @@ const AdminOverview: React.FC = () => {
             </CardHeader>
             <CardContent>
               <div className="flex justify-between items-end">
-                <div className="text-3xl font-bold">{pending}</div>
+                <div className="text-3xl font-bold text-orange-600">{pending}</div>
                 <div className="text-xs font-medium bg-orange-100 text-orange-700 px-2 py-1 rounded">{pendingPerc.toFixed(1)}%</div>
               </div>
               <Progress value={pendingPerc} className="h-1 mt-3 bg-orange-100 [&>div]:bg-orange-500" />
@@ -328,20 +345,21 @@ const AdminOverview: React.FC = () => {
             </CardContent>
           </Card>
 
+          {/* CARD RENOMEADO PARA PRODUTIVIDADE */}
           <Card className="flex flex-col h-full shadow-sm">
             <CardHeader>
-              <CardTitle>Equipe por Volume</CardTitle>
+              <CardTitle>Produtividade</CardTitle>
               <CardDescription>Produção total por consultor</CardDescription>
             </CardHeader>
             <CardContent className="flex-1 overflow-auto max-h-[450px]">
-               <div className="space-y-4">
-                 {activeConsultantIds.map(userId => {
-                   const uData = dbUsers.find(u => u.id.toString() === userId.toString());
-                   if (!uData) return null;
-                   const count = filteredData.filter(c => c.userId.toString() === userId.toString()).length;
-                   const userFormalized = filteredData.filter(c => c.userId.toString() === userId.toString() && c.status === 'formalized').length;
-                   return (
-                     <div key={userId} className="flex items-center gap-3">
+                <div className="space-y-4">
+                  {activeConsultantIds.map(userId => {
+                    const uData = dbUsers.find(u => u.id.toString() === userId.toString());
+                    if (!uData) return null;
+                    const count = filteredData.filter(c => c.userId.toString() === userId.toString()).length;
+                    const userFormalized = filteredData.filter(c => c.userId.toString() === userId.toString() && c.status === 'formalized').length;
+                    return (
+                      <div key={userId} className="flex items-center gap-3">
                         <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-primary/10 text-primary font-bold">{uData.name.substring(0,2).toUpperCase()}</AvatarFallback></Avatar>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-semibold truncate">{uData.name}</p>
@@ -350,14 +368,39 @@ const AdminOverview: React.FC = () => {
                           </div>
                         </div>
                         <div className="text-sm font-bold text-zinc-900">{count}</div>
-                     </div>
-                   );
-                 })}
-                 {activeConsultantIds.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Sem atividades no filtro.</p>}
-               </div>
+                      </div>
+                    );
+                  })}
+                  {activeConsultantIds.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Sem atividades no filtro.</p>}
+                </div>
             </CardContent>
           </Card>
         </div>
+
+        {/* --- CARD DE PRODUÇÃO MENSAL (POSICIONADO NO FINAL COMO SOLICITADO) --- */}
+        <Card className="shadow-sm">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><TrendingUp className="w-5 h-5 text-primary" /> Produção Mensal</CardTitle>
+            <CardDescription>Volume de cadastros realizados dia a dia no mês atual</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-[300px] w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={chartData}>
+                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                  <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#666' }} dy={10} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#666' }} />
+                  <Tooltip cursor={{ fill: '#f8f9fa' }} contentStyle={{ borderRadius: '8px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
+                  <Bar dataKey="quantidade" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} barSize={30}>
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.quantidade > 0 ? 'hsl(var(--primary))' : '#e2e8f0'} />
+                    ))}
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     </DashboardLayout>
   );
