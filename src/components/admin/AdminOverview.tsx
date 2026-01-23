@@ -43,18 +43,22 @@ const AdminOverview: React.FC = () => {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        const [c, u, s, us] = await Promise.all([
-          api.get('/clientes.php'),
-          api.get('/usuarios.php'),
-          api.get('/setores.php'),
-          api.get('/usinas.php')
+        // Busca os dados de forma individual para evitar que um erro em 'usinas' trave tudo
+        const [resClients, resUsers, resSectors, resUsinas] = await Promise.all([
+          api.get('/clientes.php').catch(() => []),
+          api.get('/usuarios.php').catch(() => []),
+          api.get('/setores.php').catch(() => []),
+          api.get('/usinas.php').catch(() => [])
         ]);
-        setDbClients(c || []);
-        setDbUsers(u || []);
-        setDbSectors(s || []);
-        setDbUsinas(us || []);
+
+        // Valida se o que recebeu é um array antes de salvar no estado
+        setDbClients(Array.isArray(resClients) ? resClients : []);
+        setDbUsers(Array.isArray(resUsers) ? resUsers : []);
+        setDbSectors(Array.isArray(resSectors) ? resSectors : []);
+        setDbUsinas(Array.isArray(resUsinas) ? resUsinas : []);
+
       } catch (error) {
-        console.error("Erro ao carregar dados do banco:", error);
+        console.error("Erro ao processar dados do dashboard:", error);
       }
     };
     loadDashboardData();

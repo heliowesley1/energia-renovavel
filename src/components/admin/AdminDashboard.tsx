@@ -109,7 +109,7 @@ const AdminDashboard: React.FC = () => {
     isSupervisor && user?.sectorId ? user.sectorId.toString() : 'all'
   );
   const [userFilter, setUserFilter] = useState<string>('all');
-  const [usinaFilter, setUsinaFilter] = useState<string>('all'); // Adicionado
+  const [usinaFilter, setUsinaFilter] = useState<string>('all');
 
   const loadAllData = async () => {
     try {
@@ -128,7 +128,6 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  // FIX: Removido 'api' das dependências para parar o loop infinito no Network
   useEffect(() => {
     loadAllData();
   }, []);
@@ -138,7 +137,7 @@ const AdminDashboard: React.FC = () => {
     setStatusFilter('all');
     if (!isSupervisor) setSectorFilter('all');
     setUserFilter('all');
-    setUsinaFilter('all'); // Reset de usina
+    setUsinaFilter('all');
   };
 
   const [viewingClientDetails, setViewingClientDetails] = useState<Client | null>(null);
@@ -287,22 +286,24 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
+  // --- CORREÇÃO DE COMUNICAÇÃO: Envia via URL E via Body para garantir recepção ---
   const handleDeleteClient = async (id: number) => {
     if (!isAdmin) {
       toast({ title: "Acesso Negado", description: "Apenas administradores podem excluir registros.", variant: "destructive" });
       return;
     }
-
     try {
-      const response = await api.delete(`/clientes.php?id=${id}`);
-      if (response && response.success !== false) {
+      // Forçamos o envio do ID tanto na URL quanto no objeto de corpo
+      const response = await api.delete(`/clientes.php?id=${id}`, { id: id });
+      
+      if (response && (response.success === true || response.message)) {
         toast({ title: "Excluído", description: "Cliente removido com sucesso." });
         loadAllData();
       } else {
-        toast({ title: "Erro", description: "Não foi possível excluir o cliente.", variant: "destructive" });
+        toast({ title: "Erro", description: response.error || "Erro no servidor ao excluir.", variant: "destructive" });
       }
     } catch (error) {
-      toast({ title: "Erro de Conexão", description: "Falha ao comunicar com o servidor.", variant: "destructive" });
+      toast({ title: "Erro de Conexão", description: "Verifique se o arquivo clientes.php está atualizado no servidor.", variant: "destructive" });
     }
   };
 
@@ -312,7 +313,6 @@ const AdminDashboard: React.FC = () => {
     toast({ title: "Copiado!", description: `${label} copiado.` });
   };
 
-  // AJUSTE: Adicionado .toString() e filtro de Usina
   const filteredClients = useMemo(() => {
     return clients.filter((client) => {
       if (isSupervisor && client.sectorId?.toString() !== user?.sectorId?.toString()) return false;
@@ -386,6 +386,7 @@ const AdminDashboard: React.FC = () => {
     return dbSectors.find(s => s.id.toString() === id.toString())?.name || '-';
   };
 
+  // --- CORREÇÃO VISUAL: Garantindo que o nome da Usina apareça corretamente ---
   const getUsinaName = (id: any) => {
     if (!id || id === '0' || id === null) return '-'; 
     return dbUsinas.find(u => u.id.toString() === id.toString())?.name || '-';
@@ -558,7 +559,6 @@ const AdminDashboard: React.FC = () => {
           </Dialog>
         </div>
 
-        {/* Stats */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
           {stats.map((stat) => (
             <Card key={stat.title} className={cn("glass-card hover:shadow-lg transition-shadow border-l-4", stat.borderClass)}>
@@ -575,7 +575,6 @@ const AdminDashboard: React.FC = () => {
           ))}
         </div>
 
-        {/* --- BARRA DE FILTROS ALINHADA --- */}
         <Card className="bg-muted/40 border-muted-foreground/20 shadow-sm w-full">
           <CardContent className="p-4">
             <div className="flex flex-col lg:flex-row items-center gap-4">
@@ -619,7 +618,6 @@ const AdminDashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Clients Table */}
         <Card className="glass-card">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
@@ -648,7 +646,6 @@ const AdminDashboard: React.FC = () => {
                         <div className="flex items-center justify-center gap-1">
                             <Button variant="ghost" size="icon" onClick={() => setViewingClientDetails(client)} title="Ver Detalhes"><Eye className="w-4 h-4" /></Button>
                             <Button variant="ghost" size="icon" onClick={() => handleOpenForm(client)} title="Editar" className="text-muted-foreground hover:text-amber-600"><Edit className="w-4 h-4" /></Button>
-                            
                             {isAdmin && (
                               <AlertDialog>
                                 <AlertDialogTrigger asChild>
@@ -676,14 +673,13 @@ const AdminDashboard: React.FC = () => {
               </Table>
               {filteredClients.length === 0 && (<div className="text-center py-12 text-muted-foreground"><Users className="w-12 h-12 mx-auto mb-4 opacity-50" /><p>Nenhum cliente encontrado</p></div>)}
             </div>
-
             {filteredClients.length > 0 && (
               <div className="mt-4 border-t pt-4">
                 <Pagination>
                   <PaginationContent>
                     <PaginationItem><PaginationPrevious onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)} className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} /></PaginationItem>
                     {getPageNumbers().map((page, index) => (
-                      <PaginationItem key={index}>{page === '...' ? (<PaginationEllipsis />) : (<PaginationLink isActive={currentPage === page} onClick={() => setCurrentPage(page as number)} className="cursor-pointer">{page}</PaginationLink>)}</PaginationItem>
+                      <PaginationItem key={index}>{page === '...' ? (<PaginationEllipsis />) : (<PaginationLink isActive={currentPage === page} onClick={() => typeof page === 'number' && setCurrentPage(page)} className="cursor-pointer">{page}</PaginationLink>)}</PaginationItem>
                     ))}
                     <PaginationItem><PaginationNext onClick={() => currentPage < totalPages && setCurrentPage(currentPage + 1)} className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'} /></PaginationItem>
                   </PaginationContent>
@@ -693,7 +689,6 @@ const AdminDashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Modal Detalhes */}
         <Dialog open={!!viewingClientDetails} onOpenChange={() => setViewingClientDetails(null)}>
             <DialogContent className="max-w-4xl p-0 gap-0 overflow-hidden bg-background border border-border shadow-2xl rounded-2xl [&>button]:hidden">
               <DialogHeader className="sr-only"><DialogTitle>Detalhes</DialogTitle></DialogHeader>
@@ -748,7 +743,6 @@ const AdminDashboard: React.FC = () => {
                                 <div className="bg-zinc-50/50 p-4 rounded-xl border border-dashed text-sm text-foreground/80 min-h-[100px] leading-relaxed p-4">{viewingClientDetails.observations || <span className="text-muted-foreground/50 italic">Sem observações registradas.</span>}</div>
                             </div>
                         </div>
-
                         <div className="space-y-3">
                             <Label className="flex items-center gap-2 text-xs font-bold uppercase text-muted-foreground"><ImageIcon className="w-3.5 h-3.5" /> Documentos Vinculados</Label>
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">

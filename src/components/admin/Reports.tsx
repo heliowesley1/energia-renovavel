@@ -1,16 +1,35 @@
-import React, { useState, useMemo, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { useApi } from '@/hooks/useApi';
-import DashboardLayout from '@/components/layout/DashboardLayout';
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
-import { 
-  FileSpreadsheet, 
-  PieChart as PieChartIcon, 
+import React, { useState, useMemo, useEffect } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { useApi } from "@/hooks/useApi";
+import DashboardLayout from "@/components/layout/DashboardLayout";
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  CardDescription,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  FileSpreadsheet,
+  PieChart as PieChartIcon,
   Building2,
   Filter,
   Eraser,
@@ -21,10 +40,10 @@ import {
   Trophy,
   Medal,
   Activity,
-  Target, 
+  Target,
   Users as UsersIcon,
-  Map 
-} from 'lucide-react';
+  Map,
+} from "lucide-react";
 import {
   Pagination,
   PaginationContent,
@@ -34,49 +53,52 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
-import { useToast } from '@/hooks/use-toast';
-import { format, subDays, startOfMonth, endOfMonth, isSameDay } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
-import { type DateRange } from 'react-day-picker';
-import { cn } from '@/lib/utils';
+import { useToast } from "@/hooks/use-toast";
+import { format, subDays, startOfMonth, endOfMonth, isSameDay } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import { type DateRange } from "react-day-picker";
+import { cn } from "@/lib/utils";
 
 const Reports: React.FC = () => {
   const { toast } = useToast();
   const { user } = useAuth();
   const api = useApi();
-  const isSupervisor = user?.role === 'supervisor';
+  const isSupervisor = user?.role === "supervisor";
 
   // --- ESTADOS DE DADOS REAIS ---
   const [dbClients, setDbClients] = useState<any[]>([]);
   const [dbUsers, setDbUsers] = useState<any[]>([]);
   const [dbSectors, setDbSectors] = useState<any[]>([]);
+  const [dbUsinas, setDbUsinas] = useState<any[]>([]);
 
   // Carregamento de dados reais do Banco de Dados (XAMPP)
   useEffect(() => {
     const loadReportsData = async () => {
       try {
-        const [c, u, s] = await Promise.all([
-          api.get('/clientes.php'),
-          api.get('/usuarios.php'),
-          api.get('/setores.php')
+        const [c, u, s, us] = await Promise.all([
+          api.get("/clientes.php"),
+          api.get("/usuarios.php"),
+          api.get("/setores.php"),
+          api.get("/usinas.php"),
         ]);
         setDbClients(c || []);
         setDbUsers(u || []);
         setDbSectors(s || []);
+        setDbUsinas(us || []);
       } catch (error) {
         console.error("Erro ao carregar dados do banco:", error);
       }
     };
     loadReportsData();
-  }, []); // AJUSTE: Removido 'api' para evitar loop infinito de requisições
+  }, []);
 
   // --- ESTADOS DOS FILTROS ---
   const [selectedSector, setSelectedSector] = useState<string>(
-    isSupervisor && user?.sectorId ? user.sectorId : 'all'
+    isSupervisor && user?.sectorId ? user.sectorId : "all",
   );
-  const [selectedUser, setSelectedUser] = useState<string>('all');
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const [periodPreset, setPeriodPreset] = useState<string>('all');
+  const [selectedUser, setSelectedUser] = useState<string>("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
+  const [periodPreset, setPeriodPreset] = useState<string>("all");
   const [date, setDate] = useState<DateRange | undefined>();
 
   // --- ESTADO DE PAGINAÇÃO ---
@@ -89,43 +111,43 @@ const Reports: React.FC = () => {
     const today = new Date();
 
     switch (value) {
-      case 'today':
+      case "today":
         setDate({ from: today, to: today });
         break;
-      case '7days':
+      case "7days":
         setDate({ from: subDays(today, 7), to: today });
         break;
-      case 'month':
+      case "month":
         setDate({ from: startOfMonth(today), to: endOfMonth(today) });
         break;
-      case 'all':
+      case "all":
         setDate(undefined);
         break;
-      case 'custom':
-        if (!date) setDate({ from: undefined, to: undefined }); 
+      case "custom":
+        if (!date) setDate({ from: undefined, to: undefined });
         break;
     }
   };
 
   const handleFromDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVal = e.target.value;
-    const newDate = newVal ? new Date(newVal + 'T00:00:00') : undefined;
-    setDate(prev => ({ ...prev, from: newDate }));
+    const newDate = newVal ? new Date(newVal + "T00:00:00") : undefined;
+    setDate((prev) => ({ ...prev, from: newDate }));
   };
 
   const handleToDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newVal = e.target.value;
-    const newDate = newVal ? new Date(newVal + 'T23:59:59') : undefined;
-    setDate(prev => ({ ...prev, to: newDate }));
+    const newDate = newVal ? new Date(newVal + "T23:59:59") : undefined;
+    setDate((prev) => ({ ...prev, to: newDate }));
   };
 
   const clearFilters = () => {
     if (!isSupervisor) {
-      setSelectedSector('all');
+      setSelectedSector("all");
     }
-    setSelectedUser('all');
-    setSelectedStatus('all');
-    setPeriodPreset('all');
+    setSelectedUser("all");
+    setSelectedStatus("all");
+    setPeriodPreset("all");
     setDate(undefined);
   };
 
@@ -136,13 +158,15 @@ const Reports: React.FC = () => {
 
   // --- LÓGICA DE FILTRAGEM ---
   const filteredData = useMemo(() => {
-    const data = dbClients.filter(client => {
-      const matchSector = isSupervisor 
+    const data = dbClients.filter((client) => {
+      const matchSector = isSupervisor
         ? client.sectorId === user?.sectorId
-        : (selectedSector === 'all' || client.sectorId === selectedSector);
+        : selectedSector === "all" || client.sectorId === selectedSector;
 
-      const matchUser = selectedUser === 'all' || client.userId === selectedUser;
-      const matchStatus = selectedStatus === 'all' || client.status === selectedStatus;
+      const matchUser =
+        selectedUser === "all" || client.userId === selectedUser;
+      const matchStatus =
+        selectedStatus === "all" || client.status === selectedStatus;
 
       let matchDate = true;
       if (date?.from) {
@@ -162,160 +186,223 @@ const Reports: React.FC = () => {
       return matchSector && matchUser && matchStatus && matchDate;
     });
 
-    return data.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  }, [dbClients, selectedSector, selectedUser, selectedStatus, date, isSupervisor, user?.sectorId]);
+    return data.sort(
+      (a, b) =>
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+    );
+  }, [
+    dbClients,
+    selectedSector,
+    selectedUser,
+    selectedStatus,
+    date,
+    isSupervisor,
+    user?.sectorId,
+  ]);
 
   const availableConsultants = useMemo(() => {
     if (isSupervisor) {
-      return dbUsers.filter(u => u.role === 'user' && u.sectorId === user?.sectorId);
+      return dbUsers.filter(
+        (u) => u.role === "user" && u.sectorId === user?.sectorId,
+      );
     }
-    if (selectedSector === 'all') return dbUsers.filter(u => u.role === 'user');
-    return dbUsers.filter(u => u.role === 'user' && u.sectorId === selectedSector);
+    if (selectedSector === "all")
+      return dbUsers.filter((u) => u.role === "user");
+    return dbUsers.filter(
+      (u) => u.role === "user" && u.sectorId === selectedSector,
+    );
   }, [dbUsers, selectedSector, isSupervisor, user?.sectorId]);
 
-  // --- CÁLCULOS GERAIS ATUALIZADOS ---
+  // --- CÁLCULOS GERAIS ---
   const totalClients = filteredData.length;
 
   const clientsByStatus = {
-    formalized: filteredData.filter(c => c.status === 'formalized').length, // Ajustado
-    pending: filteredData.filter(c => c.status === 'pending').length,
-    waiting: filteredData.filter(c => c.status === 'waiting_formalization').length, // Novo
+    formalized: filteredData.filter((c) => c.status === "formalized").length,
+    pending: filteredData.filter((c) => c.status === "pending").length,
+    waiting: filteredData.filter((c) => c.status === "waiting_formalization")
+      .length,
   };
 
-  const efficiencyRate = totalClients > 0 
-    ? ((clientsByStatus.formalized / totalClients) * 100).toFixed(1) 
-    : '0.0';
+  const efficiencyRate =
+    totalClients > 0
+      ? ((clientsByStatus.formalized / totalClients) * 100).toFixed(1)
+      : "0.0";
 
   const newClientsToday = useMemo(() => {
-    return filteredData.filter(c => isSameDay(new Date(c.createdAt), new Date())).length;
+    return filteredData.filter((c) =>
+      isSameDay(new Date(c.createdAt), new Date()),
+    ).length;
   }, [filteredData]);
 
   const teamPerformance = useMemo(() => {
-    const stats: Record<string, { name: string, total: number, approved: number }> = {};
-    availableConsultants.forEach(u => {
-        stats[u.id] = { name: u.name, total: 0, approved: 0 };
+    const stats: Record<
+      string,
+      { name: string; total: number; approved: number }
+    > = {};
+    availableConsultants.forEach((u) => {
+      stats[u.id] = { name: u.name, total: 0, approved: 0 };
     });
-    filteredData.forEach(client => {
+    filteredData.forEach((client) => {
       if (stats[client.userId]) {
         stats[client.userId].total += 1;
-        if (client.status === 'formalized') stats[client.userId].approved += 1; // Ajustado
+        if (client.status === "formalized") stats[client.userId].approved += 1;
       }
     });
-    return Object.values(stats).sort((a, b) => b.approved - a.approved).slice(0, 3); 
+    return Object.values(stats).sort((a, b) => b.approved - a.approved);
   }, [filteredData, availableConsultants]);
 
   const sectorPerformance = useMemo(() => {
-    const stats: Record<string, { name: string, total: number, approved: number }> = {};
-    dbSectors.forEach(s => {
-        stats[s.id] = { name: s.name, total: 0, approved: 0 };
+    const stats: Record<
+      string,
+      { name: string; total: number; approved: number }
+    > = {};
+    dbSectors.forEach((s) => {
+      stats[s.id] = { name: s.name, total: 0, approved: 0 };
     });
-    filteredData.forEach(client => {
-        if (stats[client.sectorId]) {
-            stats[client.sectorId].total += 1;
-            if (client.status === 'formalized') stats[client.sectorId].approved += 1; // Ajustado
-        }
+    filteredData.forEach((client) => {
+      if (stats[client.sectorId]) {
+        stats[client.sectorId].total += 1;
+        if (client.status === "formalized")
+          stats[client.sectorId].approved += 1;
+      }
     });
-    return Object.values(stats).sort((a, b) => b.total - a.total).slice(0, 5);
+    return Object.values(stats)
+      .sort((a, b) => b.total - a.total)
+      .slice(0, 5);
   }, [filteredData, dbSectors]);
-
-  const consultantsRanking = useMemo(() => {
-    return teamPerformance.map(stat => ({ name: stat.name, count: stat.approved }));
-  }, [teamPerformance]);
 
   // --- PAGINAÇÃO ---
   const totalPages = Math.ceil(totalClients / itemsPerPage);
   const startIndex = (currentPage - 1) * itemsPerPage;
-  const paginatedClients = filteredData.slice(startIndex, startIndex + itemsPerPage);
+  const paginatedClients = filteredData.slice(
+    startIndex,
+    startIndex + itemsPerPage,
+  );
 
-  const getSectorName = (id: string) => dbSectors.find(s => s.id === id)?.name || 'N/A';
-  const getUserName = (id: string) => dbUsers.find(u => u.id === id)?.name || 'N/A';
+  const getSectorName = (id: string) =>
+    dbSectors.find((s) => s.id === id)?.name || "N/A";
+  const getUserName = (id: string) =>
+    dbUsers.find((u) => u.id === id)?.name || "N/A";
+  const getUsinaName = (id: any) =>
+    dbUsinas.find((u) => u.id.toString() === id?.toString())?.name || "-";
 
-  // --- EXPORTAÇÃO EXCEL ATUALIZADA ---
+  // --- EXPORTAÇÃO EXCEL ---
   const handleExportExcel = () => {
     if (filteredData.length === 0) {
-      toast({ title: "Atenção", description: "Não há dados para exportar.", variant: "destructive" });
+      toast({
+        title: "Atenção",
+        description: "Não há dados para exportar.",
+        variant: "destructive",
+      });
       return;
     }
 
     try {
       const today = new Date();
       let periodDesc = "Todo o Período";
-      if (periodPreset === 'today') periodDesc = "Hoje";
-      else if (periodPreset === '7days') periodDesc = "Últimos 7 dias";
-      else if (periodPreset === 'month') periodDesc = "Este Mês";
-      else if (periodPreset === 'custom' && date?.from) {
-        periodDesc = `${format(date.from, 'dd/MM/yy')} até ${date.to ? format(date.to, 'dd/MM/yy') : format(today, 'dd/MM/yy')}`;
+      if (periodPreset === "today") periodDesc = "Hoje";
+      else if (periodPreset === "7days") periodDesc = "Últimos 7 dias";
+      else if (periodPreset === "month") periodDesc = "Este Mês";
+      else if (periodPreset === "custom" && date?.from) {
+        periodDesc = `${format(date.from, "dd/MM/yy")} até ${date.to ? format(date.to, "dd/MM/yy") : format(today, "dd/MM/yy")}`;
       }
 
-      const tableHeaders = ["DATA", "CLIENTE", "CPF", "TELEFONE", "EMAIL", "SETOR", "RESPONSÁVEL", "STATUS", "OBSERVAÇÕES"];
-      
-      const tableRows = filteredData.map(client => `
+      const tableHeaders = [
+        "DATA",
+        "CLIENTE",
+        "CPF",
+        "TELEFONE",
+        "EMAIL",
+        "USINA",
+        "SETOR",
+        "RESPONSÁVEL",
+        "STATUS",
+        "OBSERVAÇÕES",
+      ];
+
+      const tableRows = filteredData
+        .map(
+          (client) => `
         <tr style="height: 18pt;">
           <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt;">${format(new Date(client.createdAt), "dd/MM/yyyy HH:mm")}</td>
           <td style="border: 0.5pt solid #000000; text-align: left; vertical-align: middle; font-size: 8.5pt; padding-left: 5px;">${client.name.toUpperCase()}</td>
           <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; mso-number-format:'@'; font-size: 8.5pt;">${client.cpf}</td>
-          <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt;">${client.phone || '-'}</td>
-          <td style="border: 0.5pt solid #000000; text-align: left; vertical-align: middle; font-size: 8.5pt;">${client.email || '-'}</td>
+          <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt;">${client.phone || "-"}</td>
+          <td style="border: 0.5pt solid #000000; text-align: left; vertical-align: middle; font-size: 8.5pt;">${client.email || "-"}</td>
+          <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt; font-weight: bold; color: #10b981;">${getUsinaName(client.usinaId)}</td>
           <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt;">${getSectorName(client.sectorId)}</td>
           <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt;">${getUserName(client.userId)}</td>
           <td style="border: 0.5pt solid #000000; text-align: center; vertical-align: middle; font-size: 8.5pt; font-weight: bold; color: #000000;">
-            ${client.status === 'formalized' ? 'FORMALIZADO' : client.status === 'waiting_formalization' ? 'AGUARDANDO FORMALIZAÇÃO' : 'PENDENTE'}
+            ${client.status === "formalized" ? "FORMALIZADO" : client.status === "waiting_formalization" ? "AGUARDANDO FORMALIZAÇÃO" : "PENDENTE"}
           </td>
-          <td style="border: 0.5pt solid #000000; text-align: left; vertical-align: middle; font-size: 8.5pt;">${client.observations || '-'}</td>
+          <td style="border: 0.5pt solid #000000; text-align: left; vertical-align: middle; font-size: 8.5pt;">${client.observations || "-"}</td>
         </tr>
-      `).join('');
+      `,
+        )
+        .join("");
 
       const excelTemplate = `
         <html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:x="urn:schemas-microsoft-com:office:excel" xmlns="http://www.w3.org/TR/REC-html40">
         <head><meta charset="UTF-8">
-        <style>
-          .header-cell { 
-            background-color: #C6EFCE !important; 
-            color: #006100; 
-            border: 0.5pt solid #000000; 
-            font-size: 10pt; 
-            text-align: center; 
-            font-weight: bold; 
-            mso-pattern: black none;
-            background: #C6EFCE;
-          }
-          td { border: 0.5pt solid #000000; }
-        </style>
         </head>
         <body>
           <table>
-            <tr><td colspan="9" style="font-size: 16pt; font-weight: bold; text-align: center; padding: 20px; border: none;">RELATÓRIO DE CLIENTES</td></tr>
-            <tr><td colspan="9" style="font-size: 9pt; text-align: center; color: #64748b; padding-bottom: 15px; border: none;">Período: ${periodDesc}</td></tr>
+            <tr><td colspan="10" style="font-size: 16pt; font-weight: bold; text-align: center; padding: 20px; border: none;">RELATÓRIO DE CLIENTES</td></tr>
+            <tr><td colspan="10" style="font-size: 9pt; text-align: center; color: #64748b; padding-bottom: 15px; border: none;">Período: ${periodDesc}</td></tr>
             <tr style="height: 25pt;">
-              ${tableHeaders.map(h => `<th bgcolor="#C6EFCE" style="background-color: #C6EFCE; border: 0.5pt solid #000000; color: #000000; font-weight: bold;">${h}</th>`).join('')}
+              ${tableHeaders.map((h) => `<th bgcolor="#C6EFCE" style="background-color: #C6EFCE; border: 0.5pt solid #000000; color: #000000; font-weight: bold;">${h}</th>`).join("")}
             </tr>
             ${tableRows}
           </table>
         </body></html>
       `;
 
-      const blob = new Blob([excelTemplate], { type: 'application/vnd.ms-excel' });
+      const blob = new Blob([excelTemplate], {
+        type: "application/vnd.ms-excel",
+      });
       const url = URL.createObjectURL(blob);
-      const link = document.createElement('a');
+      const link = document.createElement("a");
       link.href = url;
-      link.download = `Relatorio_Clientes_${format(today, 'ddMMyy')}.xls`;
+      link.download = `Relatorio_Clientes_${format(today, "ddMMyy")}.xls`;
       link.click();
       URL.revokeObjectURL(url);
-      
+
       toast({ title: "Sucesso", description: "Exportação concluída" });
-    } catch (e) { 
+    } catch (e) {
       console.error("Erro detalhado na exportação:", e);
-      toast({ title: "Erro", description: "Falha na exportação.", variant: "destructive" }); 
+      toast({
+        title: "Erro",
+        description: "Falha na exportação.",
+        variant: "destructive",
+      });
     }
   };
 
   const getPageNumbers = () => {
     const pages = [];
-    if (totalPages <= 5) { for (let i = 1; i <= totalPages; i++) pages.push(i); } 
-    else {
-      if (currentPage <= 3) pages.push(1, 2, 3, 4, '...', totalPages);
-      else if (currentPage >= totalPages - 2) pages.push(1, '...', totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
-      else pages.push(1, '...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages);
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      if (currentPage <= 3) pages.push(1, 2, 3, 4, "...", totalPages);
+      else if (currentPage >= totalPages - 2)
+        pages.push(
+          1,
+          "...",
+          totalPages - 3,
+          totalPages - 2,
+          totalPages - 1,
+          totalPages,
+        );
+      else
+        pages.push(
+          1,
+          "...",
+          currentPage - 1,
+          currentPage,
+          currentPage + 1,
+          "...",
+          totalPages,
+        );
     }
     return pages;
   };
@@ -323,17 +410,21 @@ const Reports: React.FC = () => {
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in pb-10">
-
         {/* Cabeçalho */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">
-              Relatórios {isSupervisor ? ` - ${getSectorName(user?.sectorId || '')}` : 'Gerenciais'}
+              Relatórios{" "}
+              {isSupervisor
+                ? ` - ${getSectorName(user?.sectorId || "")}`
+                : "Gerenciais"}
             </h1>
-            <p className="text-muted-foreground mt-1">Extração e análise detalhada de dados</p>
+            <p className="text-muted-foreground mt-1">
+              Extração e análise detalhada de dados
+            </p>
           </div>
           <div>
-            <Button 
+            <Button
               onClick={handleExportExcel}
               className="bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm transition-all h-10 px-6 active:scale-95"
             >
@@ -347,20 +438,30 @@ const Reports: React.FC = () => {
         <Card className="bg-muted/40 border-muted-foreground/20 shadow-sm w-full md:w-fit ml-auto transition-all duration-300">
           <CardContent className="p-4">
             <div className="flex flex-col xl:flex-row gap-4 items-end xl:items-center xl:justify-end">
-
               <div className="flex items-center gap-2 text-sm font-bold text-foreground min-w-[60px] pb-2 xl:pb-0 shrink-0">
                 <Filter className="w-4 h-4" /> Filtros:
               </div>
 
               <div className="flex flex-wrap items-center justify-end gap-3 w-full xl:w-auto">
-                
                 {!isSupervisor && (
                   <div className="w-full sm:w-[160px]">
-                    <Select value={selectedSector} onValueChange={(v) => { setSelectedSector(v); setSelectedUser('all'); }}>
-                      <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs"><SelectValue placeholder="Setor" /></SelectTrigger>
+                    <Select
+                      value={selectedSector}
+                      onValueChange={(v) => {
+                        setSelectedSector(v);
+                        setSelectedUser("all");
+                      }}
+                    >
+                      <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
+                        <SelectValue placeholder="Setor" />
+                      </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="all">Todos Setores</SelectItem>
-                        {dbSectors.map((s) => (<SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>))}
+                        {dbSectors.map((s) => (
+                          <SelectItem key={s.id} value={s.id}>
+                            {s.name}
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -368,29 +469,47 @@ const Reports: React.FC = () => {
 
                 <div className="w-full sm:w-[160px]">
                   <Select value={selectedUser} onValueChange={setSelectedUser}>
-                    <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs"><SelectValue placeholder="Consultor" /></SelectTrigger>
+                    <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
+                      <SelectValue placeholder="Consultor" />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todos Consultores</SelectItem>
-                      {availableConsultants.map((u) => (<SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>))}
+                      {availableConsultants.map((u) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.name}
+                        </SelectItem>
+                      ))}
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="w-full sm:w-[160px]">
-                  <Select value={selectedStatus} onValueChange={setSelectedStatus}>
-                    <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs"><SelectValue placeholder="Status" /></SelectTrigger>
+                  <Select
+                    value={selectedStatus}
+                    onValueChange={setSelectedStatus}
+                  >
+                    <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
+                      <SelectValue placeholder="Status" />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todos Status</SelectItem>
                       <SelectItem value="pending">Pendentes</SelectItem>
                       <SelectItem value="formalized">Formalizados</SelectItem>
-                      <SelectItem value="waiting_formalization">Aguardando Formalização</SelectItem>
+                      <SelectItem value="waiting_formalization">
+                        Aguardando Formalização
+                      </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
 
                 <div className="w-full sm:w-[160px]">
-                  <Select value={periodPreset} onValueChange={handlePeriodPresetChange}>
-                    <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs"><SelectValue placeholder="Período" /></SelectTrigger>
+                  <Select
+                    value={periodPreset}
+                    onValueChange={handlePeriodPresetChange}
+                  >
+                    <SelectTrigger className="bg-background border-input focus:ring-ring h-9 text-xs">
+                      <SelectValue placeholder="Período" />
+                    </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todo o período</SelectItem>
                       <SelectItem value="today">Hoje</SelectItem>
@@ -401,14 +520,40 @@ const Reports: React.FC = () => {
                   </Select>
                 </div>
 
-                {periodPreset === 'custom' && (
-                  <div className="flex items-center gap-2 w-full sm:w-auto animate-in fade-in slide-in-from-right-2">
-                    <Input type="date" className="h-9 text-xs bg-background w-[130px]" value={date?.from ? format(date.from, 'yyyy-MM-dd') : ''} onChange={handleFromDateChange} />
-                    <Input type="date" className="h-9 text-xs bg-background w-[130px]" value={date?.to ? format(date.to, 'yyyy-MM-dd') : ''} onChange={handleToDateChange} />
+                {periodPreset === "custom" && (
+                  <div className="flex items-center gap-2 w-full sm:w-auto animate-in fade-in slide-in-from-right-2 pr-4">
+                    <div className="relative group">
+                      <Input
+                        type="date"
+                        className="h-9 text-[11px] sm:text-xs bg-background w-[125px] sm:w-[140px] pl-2 pr-1"
+                        value={
+                          date?.from ? format(date.from, "yyyy-MM-dd") : ""
+                        }
+                        onChange={handleFromDateChange}
+                      />
+                    </div>
+                    <span className="text-muted-foreground text-[10px] font-bold">
+                      ATÉ
+                    </span>
+                    <div className="relative group">
+                      <Input
+                        type="date"
+                        className="h-9 text-[11px] sm:text-xs bg-background w-[125px] sm:w-[140px] pl-2 pr-1"
+                        value={date?.to ? format(date.to, "yyyy-MM-dd") : ""}
+                        onChange={handleToDateChange}
+                      />
+                    </div>
                   </div>
                 )}
 
-                <Button variant="ghost" size="icon" onClick={clearFilters} className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-9 w-9"><Eraser className="w-5 h-5" /></Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={clearFilters}
+                  className="shrink-0 text-muted-foreground hover:text-destructive hover:bg-destructive/10 h-9 w-9"
+                >
+                  <Eraser className="w-5 h-5" />
+                </Button>
               </div>
             </div>
           </CardContent>
@@ -423,8 +568,12 @@ const Reports: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-foreground">{efficiencyRate}%</div>
-              <p className="text-xs text-muted-foreground mt-1">Taxa de formalização total</p>
+              <div className="text-3xl font-bold text-foreground">
+                {efficiencyRate}%
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">
+                Taxa de formalização total
+              </p>
             </CardContent>
           </Card>
 
@@ -435,8 +584,12 @@ const Reports: React.FC = () => {
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col justify-start items-start">
-              <div className="text-3xl font-bold text-foreground">{newClientsToday}</div>
-              <p className="text-xs font-medium text-muted-foreground mt-1">Clientes cadastrados hoje</p>
+              <div className="text-3xl font-bold text-foreground">
+                {newClientsToday}
+              </div>
+              <p className="text-xs font-medium text-muted-foreground mt-1">
+                Clientes cadastrados hoje
+              </p>
             </CardContent>
           </Card>
 
@@ -445,45 +598,52 @@ const Reports: React.FC = () => {
               <CardTitle className="text-lg">Pendências</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-3xl font-bold text-black">{clientsByStatus.pending}</div>
-              <p className="text-xs text-muted-foreground">Aguardando análise</p>
+              <div className="text-3xl font-bold text-black">
+                {clientsByStatus.pending}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Aguardando análise
+              </p>
             </CardContent>
           </Card>
 
-          {/* RANKING COM DESTAQUE NO NÚMERO */}
+          {/* CARD CONSULTOR DESTAQUE - AJUSTADO PARA VERDE */}
           <Card className="border-l-4 border-l-emerald-500 flex flex-col hover:shadow-md transition-shadow">
             <CardHeader className="pb-2">
               <CardTitle className="text-lg flex items-center gap-2">
-                <Medal className="w-5 h-5 text-emerald-500" /> Top 3 Consultores
+                <Trophy className="w-5 h-5 text-emerald-500" /> Consultor
+                Destaque
               </CardTitle>
             </CardHeader>
             <CardContent className="flex-1 flex flex-col justify-center">
-              {consultantsRanking.length > 0 ? (
-                <div className="space-y-3">
-                  {consultantsRanking.map((item, index) => (
-                    <div key={index} className="flex items-center justify-between text-sm">
-                      <div className="flex items-center gap-3">
-                        <span className={cn(
-                          "w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shadow-sm transition-colors",
-                          index === 0 ? "bg-yellow-500 ring-2 ring-yellow-200" : 
-                          index === 1 ? "bg-slate-400 ring-2 ring-slate-100" : 
-                          index === 2 ? "bg-amber-700 ring-2 ring-amber-100" : 
-                          "bg-slate-200 text-slate-600"
-                        )}>
-                          {index + 1}
-                        </span>
-                        <span className="font-medium text-zinc-700 truncate max-w-[100px]">
-                          {item.name.split(' ')[0]}
-                        </span>
-                      </div>
-                      <span className="font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded text-xs">
-                        {item.count}
-                      </span>
+              {teamPerformance.length > 0 ? (
+                <div className="flex items-center justify-between bg-emerald-50/50 p-3 rounded-xl border border-emerald-100">
+                  <div className="flex items-center gap-3">
+                    <div className="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-sm">
+                      {teamPerformance[0].name.charAt(0).toUpperCase()}
                     </div>
-                  ))}
+                    <div className="min-w-0">
+                      <p className="font-bold text-emerald-900 truncate">
+                        {teamPerformance[0].name.split(" ")[0]}
+                      </p>
+                      <p className="text-[10px] uppercase text-emerald-600 font-bold tracking-wider">
+                        Top Performance
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-black text-emerald-600">
+                      {teamPerformance[0].approved}
+                    </p>
+                    <p className="text-[9px] uppercase text-zinc-500 font-bold">
+                      Formalizados
+                    </p>
+                  </div>
                 </div>
               ) : (
-                <div className="text-center text-muted-foreground text-xs py-2">Sem dados de formalização</div>
+                <div className="text-center text-muted-foreground text-xs py-2">
+                  Sem dados de destaque
+                </div>
               )}
             </CardContent>
           </Card>
@@ -493,7 +653,10 @@ const Reports: React.FC = () => {
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card className="glass-card">
             <CardHeader>
-              <CardTitle className="flex items-center gap-2"><PieChartIcon className="w-5 h-5 text-primary" /> Distribuição por Status</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <PieChartIcon className="w-5 h-5 text-primary" /> Distribuição
+                por Status
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <Table>
@@ -506,19 +669,55 @@ const Reports: React.FC = () => {
                 </TableHeader>
                 <TableBody>
                   <TableRow>
-                    <TableCell className="font-medium text-black">Formalizados</TableCell>
-                    <TableCell className="text-right">{clientsByStatus.formalized}</TableCell>
-                    <TableCell className="text-right">{totalClients > 0 ? ((clientsByStatus.formalized / totalClients) * 100).toFixed(0) : 0}%</TableCell>
+                    <TableCell className="font-medium text-black">
+                      Formalizados
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {clientsByStatus.formalized}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {totalClients > 0
+                        ? (
+                            (clientsByStatus.formalized / totalClients) *
+                            100
+                          ).toFixed(0)
+                        : 0}
+                      %
+                    </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell className="font-medium text-black">Pendentes</TableCell>
-                    <TableCell className="text-right">{clientsByStatus.pending}</TableCell>
-                    <TableCell className="text-right">{totalClients > 0 ? ((clientsByStatus.pending / totalClients) * 100).toFixed(0) : 0}%</TableCell>
+                    <TableCell className="font-medium text-black">
+                      Pendentes
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {clientsByStatus.pending}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {totalClients > 0
+                        ? (
+                            (clientsByStatus.pending / totalClients) *
+                            100
+                          ).toFixed(0)
+                        : 0}
+                      %
+                    </TableCell>
                   </TableRow>
                   <TableRow>
-                    <TableCell className="font-medium text-black">Aguardando Formalização</TableCell>
-                    <TableCell className="text-right">{clientsByStatus.waiting}</TableCell>
-                    <TableCell className="text-right">{totalClients > 0 ? ((clientsByStatus.waiting / totalClients) * 100).toFixed(0) : 0}%</TableCell>
+                    <TableCell className="font-medium text-black">
+                      Aguardando Formalização
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {clientsByStatus.waiting}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {totalClients > 0
+                        ? (
+                            (clientsByStatus.waiting / totalClients) *
+                            100
+                          ).toFixed(0)
+                        : 0}
+                      %
+                    </TableCell>
                   </TableRow>
                 </TableBody>
               </Table>
@@ -528,11 +727,19 @@ const Reports: React.FC = () => {
           <Card className="glass-card">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                {!isSupervisor ? <Map className="w-5 h-5 text-yellow-500" /> : <UsersIcon className="w-5 h-5 text-yellow-500" />}
-                {!isSupervisor ? 'Performance dos Setores' : 'Desempenho da Equipe'}
+                {!isSupervisor ? (
+                  <Map className="w-5 h-5 text-yellow-500" />
+                ) : (
+                  <UsersIcon className="w-5 h-5 text-yellow-500" />
+                )}
+                {!isSupervisor
+                  ? "Performance dos Setores"
+                  : "Desempenho da Equipe"}
               </CardTitle>
               <CardDescription>
-                {!isSupervisor ? 'Comparativo de produtividade por região' : 'Produção individual no período'}
+                {!isSupervisor
+                  ? "Comparativo de produtividade por região"
+                  : "Produção individual no período"}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -540,22 +747,37 @@ const Reports: React.FC = () => {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>{!isSupervisor ? 'Setor' : 'Consultor'}</TableHead>
+                      <TableHead>
+                        {!isSupervisor ? "Setor" : "Consultor"}
+                      </TableHead>
                       <TableHead className="text-right">Total</TableHead>
                       <TableHead className="text-right">Form.</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(!isSupervisor ? sectorPerformance : teamPerformance).length > 0 ? (
-                      (!isSupervisor ? sectorPerformance : teamPerformance).map((stat) => (
-                        <TableRow key={stat.name}>
-                          <TableCell className="font-medium truncate max-w-[120px]">{stat.name}</TableCell>
-                          <TableCell className="text-right">{stat.total}</TableCell>
-                          <TableCell className="text-right text-emerald-600 font-bold">{stat.approved}</TableCell>
-                        </TableRow>
-                      ))
+                    {(!isSupervisor ? sectorPerformance : teamPerformance)
+                      .length > 0 ? (
+                      (!isSupervisor ? sectorPerformance : teamPerformance).map(
+                        (stat) => (
+                          <TableRow key={stat.name}>
+                            <TableCell className="font-medium truncate max-w-[120px]">
+                              {stat.name}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              {stat.total}
+                            </TableCell>
+                            <TableCell className="text-right text-emerald-600 font-bold">
+                              {stat.approved}
+                            </TableCell>
+                          </TableRow>
+                        ),
+                      )
                     ) : (
-                      <TableRow><TableCell colSpan={3} className="text-center py-4">Nenhum dado encontrado</TableCell></TableRow>
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center py-4">
+                          Nenhum dado encontrado
+                        </TableCell>
+                      </TableRow>
                     )}
                   </TableBody>
                 </Table>
@@ -569,10 +791,16 @@ const Reports: React.FC = () => {
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="space-y-1">
-                <CardTitle className="flex items-center gap-2"><List className="w-5 h-5 text-primary" /> Relatório Detalhado</CardTitle>
-                <CardDescription>Listagem completa. Página {currentPage} de {totalPages || 1}.</CardDescription>
+                <CardTitle className="flex items-center gap-2">
+                  <List className="w-5 h-5 text-primary" /> Relatório Detalhado
+                </CardTitle>
+                <CardDescription>
+                  Listagem completa. Página {currentPage} de {totalPages || 1}.
+                </CardDescription>
               </div>
-              <div className="text-sm text-muted-foreground font-bold text-zinc-950">Total: {totalClients} registros</div>
+              <div className="text-sm text-muted-foreground font-bold text-zinc-950">
+                Total: {totalClients} registros
+              </div>
             </div>
           </CardHeader>
           <CardContent>
@@ -591,25 +819,48 @@ const Reports: React.FC = () => {
                   {paginatedClients.length > 0 ? (
                     paginatedClients.map((client) => (
                       <TableRow key={client.id} className="hover:bg-muted/50">
-                        <TableCell className="font-medium">{client.name}</TableCell>
-                        <TableCell className="text-xs text-muted-foreground font-medium font-mono">{client.cpf}</TableCell>
-                        <TableCell className="text-xs font-semibold">{getSectorName(client.sectorId)}</TableCell>
-                        <TableCell className="text-xs">{format(new Date(client.createdAt), "dd/MM/yyyy HH:mm", { locale: ptBR })}</TableCell>
+                        <TableCell className="font-medium">
+                          {client.name}
+                        </TableCell>
+                        <TableCell className="text-xs text-muted-foreground font-medium font-mono">
+                          {client.cpf}
+                        </TableCell>
+                        <TableCell className="text-xs font-semibold">
+                          {getSectorName(client.sectorId)}
+                        </TableCell>
+                        <TableCell className="text-xs">
+                          {format(
+                            new Date(client.createdAt),
+                            "dd/MM/yyyy HH:mm",
+                            { locale: ptBR },
+                          )}
+                        </TableCell>
                         <TableCell className="text-right">
-                          <Badge variant="outline" className={cn(
-                            client.status === 'formalized' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
-                            client.status === 'waiting_formalization' ? 'bg-blue-50 text-blue-700 border-blue-200' : 
-                            'bg-orange-50 text-orange-700 border-orange-200'
-                          )}>
-                            {client.status === 'formalized' ? 'Formalizado' : 
-                             client.status === 'waiting_formalization' ? 'Aguardando Formalização' : 
-                             'Pendente'}
+                          <Badge
+                            variant="outline"
+                            className={cn(
+                              client.status === "formalized"
+                                ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+                                : client.status === "waiting_formalization"
+                                  ? "bg-blue-50 text-blue-700 border-blue-200"
+                                  : "bg-orange-50 text-orange-700 border-orange-200",
+                            )}
+                          >
+                            {client.status === "formalized"
+                              ? "Formalizado"
+                              : client.status === "waiting_formalization"
+                                ? "Aguardando Formalização"
+                                : "Pendente"}
                           </Badge>
                         </TableCell>
                       </TableRow>
                     ))
                   ) : (
-                    <TableRow><TableCell colSpan={5} className="h-24 text-center">Nenhum cliente encontrado.</TableCell></TableRow>
+                    <TableRow>
+                      <TableCell colSpan={5} className="h-24 text-center">
+                        Nenhum cliente encontrado.
+                      </TableCell>
+                    </TableRow>
                   )}
                 </TableBody>
               </Table>
@@ -619,18 +870,54 @@ const Reports: React.FC = () => {
               <div className="mt-4 border-t pt-4">
                 <Pagination>
                   <PaginationContent>
-                    <PaginationItem><PaginationPrevious onClick={() => currentPage > 1 && setCurrentPage(currentPage - 1)} className={currentPage === 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'} /></PaginationItem>
+                    <PaginationItem>
+                      <PaginationPrevious
+                        onClick={() =>
+                          currentPage > 1 && setCurrentPage(currentPage - 1)
+                        }
+                        className={
+                          currentPage === 1
+                            ? "pointer-events-none opacity-50"
+                            : "cursor-pointer"
+                        }
+                      />
+                    </PaginationItem>
                     {getPageNumbers().map((page, index) => (
-                      <PaginationItem key={index}>{page === '...' ? (<PaginationEllipsis />) : (<PaginationLink isActive={currentPage === page} onClick={() => typeof page === 'number' && setCurrentPage(page)} className="cursor-pointer">{page}</PaginationLink>)}</PaginationItem>
+                      <PaginationItem key={index}>
+                        {page === "..." ? (
+                          <PaginationEllipsis />
+                        ) : (
+                          <PaginationLink
+                            isActive={currentPage === page}
+                            onClick={() =>
+                              typeof page === "number" && setCurrentPage(page)
+                            }
+                            className="cursor-pointer"
+                          >
+                            {page}
+                          </PaginationLink>
+                        )}
+                      </PaginationItem>
                     ))}
-                    <PaginationItem><PaginationNext onClick={() => currentPage < totalPages && setCurrentPage(currentPage + 1)} className={currentPage >= totalPages ? 'pointer-events-none opacity-50' : 'cursor-pointer'} /></PaginationItem>
+                    <PaginationItem>
+                      <PaginationNext
+                        onClick={() =>
+                          currentPage < totalPages &&
+                          setCurrentPage(currentPage + 1)
+                        }
+                        className={
+                          currentPage >= totalPages
+                            ? "pointer-events-none opacity-50"
+                            : "cursor-pointer"
+                        }
+                      />
+                    </PaginationItem>
                   </PaginationContent>
                 </Pagination>
               </div>
             )}
           </CardContent>
         </Card>
-
       </div>
     </DashboardLayout>
   );

@@ -10,9 +10,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
 }
 
 $host = "localhost";
-$db_name = "wwcred_energy_renew";
-$username = "wwcred_energy_renew";
-$password = "W-ME%v%Q+NB,";
+$db_name = "wtestew";
+$username = "teste";
+$password = "teste";
 
 try {
     $conn = new PDO("mysql:host=" . $host . ";dbname=" . $db_name, $username, $password);
