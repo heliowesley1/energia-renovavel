@@ -34,5 +34,10 @@ export const useApi = () => {
       method: 'POST', 
       body: JSON.stringify(body) 
     }),
+    put: (endpoint: string, body: any) => fetchApi(endpoint, { 
+      method: 'PUT', 
+      body: JSON.stringify(body) 
+    }),
+    delete: (endpoint: string) => fetchApi(endpoint, { method: 'DELETE' }),
   };
 };
