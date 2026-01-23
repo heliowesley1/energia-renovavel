@@ -23,18 +23,13 @@ const Login: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // Chama a função login do Contexto que se comunica com a API PHP
       const success = await login(email, password);
-
       if (success) {
-        // O nome do usuário agora vem direto do contexto após o login bem-sucedido
-        // Buscamos o usuário salvo no localStorage ou estado para exibir no brinde
         const userData = JSON.parse(localStorage.getItem('user') || '{}');
         const userName = userData.name || 'Usuário';
 
         toast({
           title: `Seja bem vindo(a) novamente, ${userName}`,
-          description: "",
           duration: 3000,
         });
 
@@ -50,7 +45,7 @@ const Login: React.FC = () => {
     } catch (error) {
       toast({
         title: 'Erro de Conexão',
-        description: 'Não foi possível conectar ao servidor XAMPP.',
+        description: 'Não foi possível conectar ao servidor.',
         variant: 'destructive',
       });
     } finally {
@@ -59,65 +54,53 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="h-screen gradient-hero flex flex-col relative overflow-hidden">
+    // min-h-screen com flex-col para o footer sempre ir para o fim
+    <div className="min-h-screen gradient-hero flex flex-col relative overflow-x-hidden">
 
       {/* --- BACKGROUND DECORATIONS --- */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-20 left-10 w-72 h-72 bg-primary/10 rounded-full blur-3xl animate-pulse-slow" />
-        <div className="absolute bottom-20 right-10 w-96 h-96 bg-secondary/10 rounded-full blur-3xl animate-pulse-slow" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-primary/5 rounded-full blur-3xl" />
+        <div className="absolute top-0 left-[-10%] w-[50%] h-[50%] bg-primary/10 rounded-full blur-3xl animate-pulse-slow" />
+        <div className="absolute bottom-0 right-[-10%] w-[50%] h-[50%] bg-secondary/10 rounded-full blur-3xl animate-pulse-slow" />
       </div>
 
       {/* --- ÍCONES FLUTUANTES --- */}
-      <div className="absolute inset-0 pointer-events-none overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none overflow-hidden hidden sm:block">
         <div className="absolute top-10 right-10 text-secondary/30 animate-float" style={{ animationDelay: '0s' }}>
           <Sun size={64} />
         </div>
         <div className="absolute top-20 left-10 text-primary/20 animate-float" style={{ animationDelay: '1.5s' }}>
           <Leaf size={52} />
         </div>
-        <div className="absolute top-1/3 left-20 text-secondary/20 animate-float" style={{ animationDelay: '1s' }}>
+        <div className="absolute top-1/4 left-1/2 text-secondary/20 animate-float" style={{ animationDelay: '1s' }}>
           <Zap size={40} />
         </div>
-        <div className="absolute top-1/2 right-24 text-primary/20 animate-float" style={{ animationDelay: '2.5s' }}>
+        <div className="absolute bottom-1/4 right-20 text-primary/20 animate-float" style={{ animationDelay: '2.5s' }}>
           <Zap size={48} />
-        </div>
-        <div className="absolute bottom-32 left-32 text-primary/30 animate-float" style={{ animationDelay: '2s' }}>
-          <Leaf size={48} />
-        </div>
-        <div className="absolute bottom-20 right-40 text-secondary/25 animate-float" style={{ animationDelay: '0.5s' }}>
-          <Sun size={36} />
-        </div>
-        <div className="absolute top-12 left-1/2 ml-40 text-primary/15 animate-float" style={{ animationDelay: '3s' }}>
-          <Zap size={24} />
-        </div>
-        <div className="absolute bottom-40 left-1/2 -ml-60 text-secondary/15 animate-float" style={{ animationDelay: '1.2s' }}>
-          <Leaf size={32} />
         </div>
       </div>
 
-      {/* --- ÁREA CENTRAL (FORMULÁRIO) --- */}
-      <main className="flex-1 flex flex-col items-center justify-center p-4 w-full relative z-10 -mt-20">
-        <div className="w-full max-w-md animate-fade-in">
+      {/* --- ÁREA CENTRAL (flex-grow faz o main ocupar o espaço e empurrar o footer) --- */}
+      <main className="flex-grow flex items-center justify-center p-6 relative z-10">
+        <div className="w-full max-w-md animate-fade-in space-y-6 sm:space-y-8">
 
-          <div className="text-center mb-8">
-            <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl gradient-primary shadow-glow mb-4">
-              <Zap className="w-10 h-10 text-primary-foreground" />
+          <div className="text-center">
+            <div className="inline-flex items-center justify-center w-10 h-10 sm:w-14 sm:h-14 rounded-lg gradient-primary shadow-glow mb-3">
+              <Zap className="w-5 h-5 sm:w-7 sm:h-7 text-primary-foreground" />
             </div>
-            <h1 className="text-3xl font-display font-bold text-primary-foreground">
+            <h1 className="text-2xl sm:text-3xl font-display font-bold text-primary-foreground">
               Energia Renovável
             </h1>
-            <p className="text-primary-foreground/70 mt-2">
+            {/* <p className="text-primary-foreground/70 text-sm sm:text-base mt-1">
               Sistema de Gestão de Clientes
-            </p>
+            </p> */}
           </div>
 
-          <Card className="glass-card border-0 shadow-xl">
+          <Card className="glass-card border-0 shadow-2xl backdrop-blur-md">
             <CardHeader className="space-y-1 pb-4">
-              <CardTitle className="text-2xl font-display text-center">
+              <CardTitle className="text-xl sm:text-2xl font-display text-center">
                 Bem-vindo(a)
               </CardTitle>
-              <CardDescription className="text-center">
+              <CardDescription className="text-center text-xs sm:text-sm">
                 Entre com suas credenciais para acessar
               </CardDescription>
             </CardHeader>
@@ -131,7 +114,7 @@ const Login: React.FC = () => {
                       id="email"
                       type="email"
                       placeholder="seu@email.com"
-                      className="pl-10"
+                      className="pl-10 h-11 focus-visible:ring-primary"
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
@@ -146,7 +129,7 @@ const Login: React.FC = () => {
                       id="password"
                       type="password"
                       placeholder="••••••"
-                      className="pl-10"
+                      className="pl-10 h-11 focus-visible:ring-primary"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
@@ -157,8 +140,7 @@ const Login: React.FC = () => {
                 <Button
                   type="submit"
                   variant="hero"
-                  className="w-full"
-                  size="lg"
+                  className="w-full h-11 sm:h-12 font-bold text-base shadow-lg"
                   disabled={isLoading}
                 >
                   {isLoading ? (
@@ -171,22 +153,21 @@ const Login: React.FC = () => {
                   )}
                 </Button>
               </form>
-
             </CardContent>
           </Card>
         </div>
       </main>
 
-      {/* --- FOOTER FLUTUANTE --- */}
-      <footer className="relative z-10 py-6 w-full text-center">
+      {/* --- FOOTER (Posicionamento fixo na base via flexbox) --- */}
+      <footer className="relative z-10 py-4 sm:py-6 w-full text-center mt-auto px-4 bg-transparent">
         <div className="flex flex-col items-center justify-center gap-2">
           {/* Logo da Empresa */}
           <img 
-            src="logo.png" 
+            src="logoBranco.png" 
             alt="Credinowe Logo" 
-            className="h-6 w-auto object-contain opacity-90 drop-shadow-sm" 
+            className="h-5 sm:h-6 w-auto object-contain opacity-90 drop-shadow-sm" 
           />
-          <div className="flex flex-col text-xs text-primary-foreground/80">
+          <div className="flex flex-col text-[10px] sm:text-xs text-primary-foreground/80">
             <p className="font-medium tracking-wide">
               Credinowe Soluções Financeiras
             </p>
@@ -196,7 +177,6 @@ const Login: React.FC = () => {
           </div>
         </div>
       </footer>
-
     </div>
   );
 };
