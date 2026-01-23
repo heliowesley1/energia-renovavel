@@ -9,10 +9,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit;
 }
 
-$host = "localhost";
-$db_name = "wtestew";
-$username = "teste";
-$password = "teste";
+
 
 try {
     $conn = new PDO("mysql:host=" . $host . ";dbname=" . $db_name, $username, $password);

@@ -14,7 +14,8 @@ import {
   X,
   PieChart,
   ClipboardList,
-  Factory // Importado para Usinas
+  Factory,
+  DollarSign // Adicionado apenas este ícone
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -34,15 +35,17 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
 
   const adminLinks = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { href: '/comissoes', icon: DollarSign, label: 'Comissões' }, // Adicionado
     { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios' },
     { href: '/dashboard/clients', icon: Users, label: 'Clientes' },
     { href: '/dashboard/sectors', icon: Building2, label: 'Setores' },
-    { href: '/dashboard/usinas', icon: Factory, label: 'Usinas' }, // Adicionado
+    { href: '/dashboard/usinas', icon: Factory, label: 'Usinas' },
     { href: '/dashboard/users', icon: UserCog, label: 'Usuários' },
   ];
 
   const supervisorLinks = [
     { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    { href: '/comissoes', icon: DollarSign, label: 'Comissões' }, // Adicionado
     { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios' },
     { href: '/dashboard/clients', icon: Users, label: 'Clientes' },
   ];
