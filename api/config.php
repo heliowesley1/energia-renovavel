@@ -9,7 +9,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     exit;
 }
 
-
+$host = "localhost";
+$db_name = "energia_renovavel";
+$username = "root";
+$password = "";
 
 try {
     $conn = new PDO("mysql:host=" . $host . ";dbname=" . $db_name, $username, $password);
