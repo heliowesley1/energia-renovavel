@@ -26,7 +26,7 @@ const UsinaManagement: React.FC = () => {
   const api = useApi();
   const [usinas, setUsinas] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  
+
   const [editingId, setEditingId] = useState<number | null>(null);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -67,10 +67,10 @@ const UsinaManagement: React.FC = () => {
       ? parseFloat(comission.replace(/\./g, "").replace(",", "."))
       : null;
 
-    const payload = { 
-      name, 
-      description, 
-      comission: cleanComission 
+    const payload = {
+      name,
+      description,
+      comission: cleanComission
     };
 
     try {
@@ -159,10 +159,10 @@ const UsinaManagement: React.FC = () => {
                   <Input value={name} onChange={e => setName(e.target.value)} placeholder="Ex: Solar Central Norte" className="h-11 bg-muted/30 border-muted-foreground/20 focus:border-emerald-500" />
                 </div>
                 <div className="space-y-2">
-                  <Label className="font-bold text-xs uppercase text-muted-foreground text-emerald-600">Comissão fixa (R$)</Label>
+                  <Label className="font-bold text-xs uppercase text-muted-foreground">Comissão fixa (R$)</Label>
                   <div className="relative">
-                    <Input type="text" value={comission} onChange={e => setComission(formatCurrency(e.target.value))} placeholder="0,00" className="h-11 pl-9 bg-muted/30 border-muted-foreground/20 focus:border-emerald-500 font-mono" />
-                    <Banknote className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 font-bold text-emerald-600">R$</span>
+                    <Input type="text" value={comission} onChange={e => setComission(formatCurrency(e.target.value))} placeholder="0,00" className="h-11 pl-14 bg-muted/30 border-muted-foreground/20 focus:border-emerald-500 font-bold text-emerald-600" />
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -170,7 +170,7 @@ const UsinaManagement: React.FC = () => {
                   <Textarea value={description} onChange={e => setDescription(e.target.value)} placeholder="Detalhes técnicos..." className="min-h-[100px] bg-muted/30 border-muted-foreground/20 focus:border-primary resize-none" />
                 </div>
                 <Button type="submit" className={cn("w-full h-11 text-base font-bold shadow-lg", editingId ? "bg-amber-600 hover:bg-amber-700" : "bg-emerald-600 hover:bg-emerald-700 text-white")} disabled={loading}>
-                  {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : editingId ? "Atualizar Dados" : "Cadastrar Unidade"}
+                  {loading ? <Loader2 className="w-5 h-5 animate-spin mr-2" /> : editingId ? "Atualizar Dados" : "Cadastrar Usina"}
                 </Button>
               </form>
             </CardContent>
@@ -179,8 +179,8 @@ const UsinaManagement: React.FC = () => {
           <div className="lg:col-span-8">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               {usinas.map((u) => (
-                <Card 
-                  key={u.id} 
+                <Card
+                  key={u.id}
                   onClick={() => handleEdit(u)}
                   className={cn(
                     "group cursor-pointer transition-all duration-300 shadow-sm hover:shadow-xl relative overflow-hidden bg-gradient-to-br from-card to-muted/20 border-2",
@@ -188,11 +188,11 @@ const UsinaManagement: React.FC = () => {
                   )}
                 >
                   <div className="absolute top-0 right-0 p-4 flex flex-col items-end gap-2">
-                    <span className="flex items-center gap-1 text-[10px] font-mono font-bold text-muted-foreground bg-muted px-2 py-1 rounded-full uppercase border">
+                    <span className="flex items-center gap-1 text-[10px] font-bold text-muted-foreground bg-muted px-2 py-1 rounded-full uppercase border">
                       <Hash className="w-3 h-3" /> {u.id}
                     </span>
                     {u.comission && (
-                      <span className="flex items-center gap-1 text-[10px] font-mono font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-1 rounded-full uppercase">
+                      <span className="flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-100 border border-emerald-200 px-2 py-1 rounded-full uppercase">
                         <Banknote className="w-3 h-3" /> R$ {parseFloat(u.comission).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                       </span>
                     )}

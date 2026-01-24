@@ -8,7 +8,8 @@ import AdminOverview from '@/components/admin/AdminOverview';
 import SectorManagement from '@/components/admin/SectorManagement';
 import UserManagement from '@/components/admin/UserManagement';
 import Reports from '@/components/admin/Reports';
-import UsinaManagement from '@/components/admin/UsinaManagement'; // Nova Importação
+import UsinaManagement from '@/components/admin/UsinaManagement';
+import Comissao from '@/components/admin/Comissao'; // Importação necessária
 
 // User Components
 import UserDashboard from '@/components/user/UserDashboard'; 
@@ -24,18 +25,22 @@ const Dashboard: React.FC = () => {
 
   // --- Rotas de ADMIN e SUPERVISOR ---
   if (user.role === 'admin' || user.role === 'supervisor') {
+    // Rotas de Overview e Clientes
     if (location.pathname === '/dashboard') return <AdminOverview />;
     if (location.pathname === '/dashboard/clients') return <AdminDashboard />;
     if (location.pathname === '/dashboard/reports') return <Reports />;
     
+    // Rota de Comissões - Agora reconhecida pelo Dashboard
+    if (location.pathname === '/dashboard/comissoes') return <Comissao />; 
+    
     // Rotas exclusivas de ADMIN
     if (user.role === 'admin') {
-        if (location.pathname === '/dashboard/sectors') return <SectorManagement />;
-        if (location.pathname === '/dashboard/users') return <UserManagement />;
-        if (location.pathname === '/dashboard/usinas') return <UsinaManagement />; // Nova Rota
+      if (location.pathname === '/dashboard/sectors') return <SectorManagement />;
+      if (location.pathname === '/dashboard/users') return <UserManagement />;
+      if (location.pathname === '/dashboard/usinas') return <UsinaManagement />;
     }
     
-    // Se a rota não existir para o Supervisor (ex: ele tentar acessar /usinas), volta pro overview
+    // Se a rota começar com /dashboard/ mas não foi capturada acima, volta para o início
     if (location.pathname.startsWith('/dashboard/')) {
        return <AdminOverview />;
     }
@@ -52,7 +57,7 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  // Fallback padrão
+  // Fallback para qualquer outra rota dentro do contexto de Dashboard
   return <Navigate to="/dashboard" replace />;
 };
 

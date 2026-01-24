@@ -1,89 +1,246 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useApi } from '@/hooks/useApi';
 import DashboardLayout from '@/components/layout/DashboardLayout';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { DollarSign, Users, FileCheck, Loader2 } from 'lucide-react';
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { 
+  DollarSign, Loader2, Filter, Trophy, BarChart3, Eraser, FileSpreadsheet 
+} from 'lucide-react';
+import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
 
 const Comissao = () => {
+  const { toast } = useToast();
   const api = useApi();
   const [dados, setDados] = useState<any[]>([]);
+  const [usinas, setUsinas] = useState<any[]>([]);
+  const [setores, setSetores] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadComissoes = async () => {
+  const [selectedSector, setSelectedSector] = useState<string>("all");
+  const [selectedUser, setSelectedUser] = useState<string>("all");
+  const [searchName, setSearchName] = useState("");
+  const [periodPreset, setPeriodPreset] = useState<string>("all");
+  const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>({});
+
+  const fetchData = async () => {
+    setLoading(true);
     try {
-      const res = await api.get('/comissoes.php');
-      setDados(res || []);
+      let queryParams = "";
+      if (dateRange.from && dateRange.to) {
+        queryParams = `?start_date=${dateRange.from}&end_date=${dateRange.to}`;
+      }
+      const [resUsinas, resSetores, resComissoes] = await Promise.all([
+        api.get('/usinas.php'),
+        api.get('/setores.php'),
+        api.get(`/comissoes.php${queryParams}`)
+      ]);
+      setUsinas(Array.isArray(resUsinas) ? resUsinas : []);
+      setSetores(Array.isArray(resSetores) ? resSetores : []);
+      setDados(Array.isArray(resComissoes) ? resComissoes : []);
     } catch (error) {
-      console.error("Erro ao carregar comissões");
+      console.error("Erro ao carregar dados", error);
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => { loadComissoes(); }, []);
+  useEffect(() => { fetchData(); }, [dateRange]);
+
+  const handlePeriodPresetChange = (value: string) => {
+    setPeriodPreset(value);
+    const today = new Date();
+    const fmt = (d: Date) => format(d, "yyyy-MM-dd");
+    switch (value) {
+      case "today": setDateRange({ from: fmt(today), to: fmt(today) }); break;
+      case "7days": setDateRange({ from: fmt(subDays(today, 7)), to: fmt(today) }); break;
+      case "month": setDateRange({ from: fmt(startOfMonth(today)), to: fmt(endOfMonth(today)) }); break;
+      case "all": setDateRange({}); break;
+    }
+  };
+
+  const clearFilters = () => {
+    setSelectedSector("all");
+    setSelectedUser("all");
+    setSearchName("");
+    setPeriodPreset("all");
+    setDateRange({});
+  };
+
+  const dadosFiltrados = useMemo(() => {
+    return dados.filter(item => {
+      const matchSector = selectedSector === "all" || item.setor === selectedSector;
+      const matchUser = selectedUser === "all" || item.userId === selectedUser;
+      const matchSearch = (item.consultor || "").toLowerCase().includes(searchName.toLowerCase());
+      return matchSector && matchUser && matchSearch;
+    });
+  }, [dados, selectedSector, selectedUser, searchName]);
+
+  const totalComissaoGeral = useMemo(() => dadosFiltrados.reduce((acc, curr) => acc + (curr.total_comissao || 0), 0), [dadosFiltrados]);
+  const consultorDestaque = useMemo(() => [...dadosFiltrados].sort((a, b) => b.contratos - a.contratos)[0], [dadosFiltrados]);
+
+  const handleExportExcel = () => {
+    if (dadosFiltrados.length === 0) return;
+    const headers = ["SETOR", "CONSULTOR", ...usinas.map(u => u.name), "TOTAL CONTRATOS", "COMISSÃO TOTAL"];
+    const rows = dadosFiltrados.map(item => `
+      <tr>
+        <td>${item.setor}</td>
+        <td>${(item.consultor || "").toUpperCase()}</td>
+        ${usinas.map(u => `<td>${item.detalhes_usinas?.[u.name]?.qtd || 0}</td>`).join("")}
+        <td>${item.contratos}</td>
+        <td>${(item.total_comissao || 0).toFixed(2)}</td>
+      </tr>
+    `).join("");
+
+    const template = `<html><meta charset="UTF-8"><body><table border="1"><tr bgcolor="#f0fdf4">${headers.map(h => `<th>${h}</th>`).join("")}</tr>${rows}</table></body></html>`;
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(new Blob([template], { type: "application/vnd.ms-excel" }));
+    link.download = `Comissoes_${format(new Date(), "ddMMyy")}.xls`;
+    link.click();
+    toast({ title: "Sucesso", description: "Relatório exportado com sucesso!" });
+  };
 
   return (
     <DashboardLayout>
-      <div className="space-y-6">
-        <h1 className="text-3xl font-bold">Gestão de Comissões</h1>
+      <div className="space-y-6 pb-10">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <h1 className="text-3xl font-bold tracking-tight">Gestão de Comissões</h1>
+          <Button onClick={handleExportExcel} className="bg-emerald-600 hover:bg-emerald-700 h-10">
+            <FileSpreadsheet className="w-4 h-4 mr-2" /> Exportar
+          </Button>
+        </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between pb-2">
-              <CardTitle className="text-sm font-medium">Total a Pagar</CardTitle>
-              <DollarSign className="h-4 w-4 text-emerald-600" />
+        <Card className="bg-muted/40 border-muted-foreground/20 shadow-sm">
+          <CardContent className="p-4">
+            <div className="flex flex-col xl:flex-row gap-4 items-end xl:items-center xl:justify-end">
+              <div className="flex items-center gap-2 text-sm font-bold text-foreground shrink-0 pb-2 xl:pb-0">
+                <Filter className="w-4 h-4" /> Filtros:
+              </div>
+              <div className="flex flex-wrap items-center justify-end gap-3 w-full">
+                <Input placeholder="Buscar consultor..." className="h-9 text-xs bg-background w-full sm:w-[160px]" value={searchName} onChange={(e) => setSearchName(e.target.value)} />
+                <Select value={selectedSector} onValueChange={(v) => { setSelectedSector(v); setSelectedUser("all"); }}>
+                  <SelectTrigger className="h-9 text-xs bg-background w-full sm:w-[160px]"><SelectValue placeholder="Setor" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos Setores</SelectItem>
+                    {setores.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+                {selectedSector !== "all" && (
+                  <Select value={selectedUser} onValueChange={setSelectedUser}>
+                    <SelectTrigger className="h-9 text-xs bg-background w-full sm:w-[160px]"><SelectValue placeholder="Consultor" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos do Setor</SelectItem>
+                      {dados.filter(d => d.setor === selectedSector).map(u => (
+                        <SelectItem key={u.userId} value={u.userId}>{u.consultor}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
+                <Select value={periodPreset} onValueChange={handlePeriodPresetChange}>
+                  <SelectTrigger className="h-9 text-xs bg-background w-full sm:w-[160px]"><SelectValue placeholder="Período" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todo o período</SelectItem>
+                    <SelectItem value="today">Hoje</SelectItem>
+                    <SelectItem value="7days">Últimos 7 dias</SelectItem>
+                    <SelectItem value="month">Este Mês</SelectItem>
+                    <SelectItem value="custom">Personalizado...</SelectItem>
+                  </SelectContent>
+                </Select>
+                {periodPreset === "custom" && (
+                  <div className="flex items-center gap-2">
+                    <Input type="date" className="h-9 w-[155px] text-xs bg-background px-3" value={dateRange.from || ""} onChange={(e) => setDateRange(prev => ({...prev, from: e.target.value}))} />
+                    <span className="text-[10px] font-bold">ATÉ</span>
+                    <Input type="date" className="h-9 w-[155px] text-xs bg-background px-3" value={dateRange.to || ""} onChange={(e) => setDateRange(prev => ({...prev, to: e.target.value}))} />
+                  </div>
+                )}
+                <Button variant="ghost" size="icon" onClick={clearFilters} className="h-9 w-9 text-muted-foreground hover:text-destructive"><Eraser className="w-5 h-5" /></Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 items-stretch">
+          <Card className="border-l-4 border-l-emerald-500 shadow-sm flex flex-col justify-center min-h-[110px]">
+            <CardHeader className="py-2 flex flex-row items-center justify-between">
+              <CardTitle className="text-xs font-bold uppercase text-emerald-600">Total a Pagar</CardTitle>
+              <DollarSign className="w-4 h-4 text-emerald-600" />
+            </CardHeader>
+            <CardContent><div className="text-2xl font-bold text-black">R$ {totalComissaoGeral.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div></CardContent>
+          </Card>
+
+          <Card className="border-l-4 border-l-amber-500 shadow-sm flex flex-col justify-center min-h-[110px]">
+            <CardHeader className="py-2 flex flex-row items-center justify-between">
+              <CardTitle className="text-xs font-bold uppercase text-amber-600">Consultor Destaque</CardTitle>
+              <Trophy className="w-4 h-4 text-amber-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">
-                R$ {dados.reduce((acc, curr) => acc + parseFloat(curr.total_comissao || 0), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              <div className="text-lg font-bold text-black truncate">{consultorDestaque?.consultor || "---"}</div>
+              <p className="text-xs text-muted-foreground">{consultorDestaque?.contratos || 0} contratos</p>
+            </CardContent>
+          </Card>
+
+          <Card className="md:col-span-2 shadow-sm flex flex-col min-h-[110px]">
+            <CardHeader className="py-2 bg-muted/20 border-b"><CardTitle className="text-xs font-bold uppercase text-black flex items-center gap-2"><BarChart3 className="w-3 h-3"/> Média por Usina</CardTitle></CardHeader>
+            <CardContent className="p-3 flex-1">
+              <div className="flex flex-wrap gap-2 justify-start items-center">
+                {usinas.map(u => {
+                  const totalU = dadosFiltrados.reduce((acc, curr) => acc + (curr.detalhes_usinas?.[u.name]?.qtd || 0), 0);
+                  const media = Math.round(totalU / (dadosFiltrados.length || 1));
+                  return (
+                    <div key={u.id} className="flex-1 min-w-[100px] text-center p-2 border rounded bg-white flex flex-col justify-center shadow-sm">
+                      <p className="text-[9px] uppercase font-bold text-black truncate">{u.name}</p>
+                      <p className="text-lg font-bold text-black">{media}</p>
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
         </div>
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Users className="w-5 h-5" /> Relatório por Consultor
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            {loading ? (
-              <div className="flex justify-center p-10"><Loader2 className="animate-spin" /></div>
-            ) : (
+        <Card className="shadow-sm overflow-hidden bg-white border-muted">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
               <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Consultor</TableHead>
-                    <TableHead className="text-center">Contratos (Formalizados)</TableHead>
-                    <TableHead className="text-right">Valor Total Comissão</TableHead>
-                    <TableHead className="text-right">Ações</TableHead>
+                <TableHeader className="bg-emerald-50/50">
+                  <TableRow className="border-b-black/10">
+                    <TableHead className="font-bold text-black uppercase text-xs text-center">Setor</TableHead>
+                    <TableHead className="font-bold text-black uppercase text-xs text-center">Consultor</TableHead>
+                    {usinas.map(u => (
+                      <TableHead key={u.id} className="text-center font-bold text-black uppercase text-xs border-x border-black/5">{u.name}</TableHead>
+                    ))}
+                    <TableHead className="text-center font-bold text-black uppercase text-xs bg-amber-50/30">Total Contratos</TableHead>
+                    <TableHead className="text-center font-bold bg-emerald-600 text-white uppercase text-xs">Comissão Total (R$)</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {dados.map((item) => (
-                    <TableRow key={item.userId}>
-                      <TableCell className="font-medium">{item.consultor}</TableCell>
-                      <TableCell className="text-center">
-                        <Badge variant="secondary" className="gap-1">
-                          <FileCheck className="w-3 h-3" /> {item.contratos}
-                        </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-bold text-emerald-600">
-                        R$ {parseFloat(item.total_comissao || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </TableCell>
-                      <TableCell className="text-right">
-                        <button className="text-xs bg-primary text-white px-3 py-1 rounded-md hover:opacity-80">
-                          Pagar
-                        </button>
-                      </TableCell>
+                  {loading ? (
+                    <TableRow><TableCell colSpan={usinas.length + 4} className="h-24 text-center"><Loader2 className="animate-spin inline mr-2" /> Carregando...</TableCell></TableRow>
+                  ) : dadosFiltrados.length === 0 ? (
+                    <TableRow><TableCell colSpan={usinas.length + 4} className="h-24 text-center text-muted-foreground">Nenhum contrato formalizado encontrado.</TableCell></TableRow>
+                  ) : dadosFiltrados.map((item, idx) => (
+                    <TableRow key={idx} className="hover:bg-muted/30 transition-colors border-b">
+                      <TableCell className="text-black text-center">{item.setor || '---'}</TableCell>
+                      <TableCell className="font-bold text-black text-center">{item.consultor}</TableCell>
+                      {usinas.map(u => {
+                        const info = item.detalhes_usinas?.[u.name] || { qtd: 0, valor: 0 };
+                        return (
+                          <TableCell key={u.id} className="text-center border-x border-muted">
+                            <div className="font-bold text-black text-center">{info.qtd}</div>
+                            <div className="text-[10px] text-muted-foreground text-center">R$ {(info.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                          </TableCell>
+                        );
+                      })}
+                      <TableCell className="text-center font-bold text-black bg-amber-50/10">{item.contratos}</TableCell>
+                      <TableCell className="text-center font-bold text-emerald-700 bg-emerald-50/30">R$ {(item.total_comissao || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-            )}
+            </div>
           </CardContent>
         </Card>
       </div>
