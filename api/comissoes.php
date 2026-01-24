@@ -28,20 +28,24 @@ try {
     // 2. Usamos INNER JOIN com clientes para garantir que só pegamos quem realmente vendeu.
     // 3. LOWER(c.status) garante que 'Formalizado', 'formalizado' ou 'FORMALIZADO' funcionem.
     $sql = "SELECT 
-                u.id as userId,
-                u.name as consultor,
-                u.role,
-                COALESCE(s.name, 'Geral') as setor_nome,
-                us.name as usina_nome,
-                COALESCE(us.comission, 0) as usina_valor_comissao,
-                COUNT(c.id) as qtd_por_usina
-            FROM usuarios u
-            LEFT JOIN setores s ON u.sectorId = s.id
-            INNER JOIN clientes c ON u.id = c.userId
-            LEFT JOIN usinas us ON c.usinaId = us.id
-            WHERE LOWER(c.status) = 'formalizado' $dateFilter
-            GROUP BY u.id, us.id
-            ORDER BY u.name ASC";
+            u.id as userId,
+            u.name as consultor,
+            u.role,
+            COALESCE(s.name, 'Geral') as setor_nome,
+            us.name as usina_nome,
+            COALESCE(us.comission, 0) as usina_valor_comissao,
+            COUNT(c.id) as qtd_por_usina
+        FROM usuarios u
+        LEFT JOIN setores s ON u.sectorId = s.id
+        -- Mudamos para garantir que o vínculo com o usuário exista
+        INNER JOIN clientes c ON u.id = c.userId
+        -- LEFT JOIN na usina para não sumir com o cliente se a usina não estiver marcada
+        LEFT JOIN usinas us ON c.usinaId = us.id
+        -- Filtro flexível para aceitar ambos os termos
+        WHERE (LOWER(c.status) = 'formalizado' OR LOWER(c.status) = 'formalized') 
+        $dateFilter
+        GROUP BY u.id, us.id, us.name, us.comission, s.name, u.name, u.role
+        ORDER BY u.name ASC";
 
     $stmt = $conn->prepare($sql);
     $stmt->execute($params);
