@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox'; // Adicionado para múltipla seleção
 import {
   Select,
   SelectContent,
@@ -50,7 +51,8 @@ import {
   Filter,
   X,
   UserCheck,
-  Building2
+  Building2,
+  Users2 // Ícone para múltiplos setores
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
@@ -90,7 +92,7 @@ const UserManagement: React.FC = () => {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
-    role: 'user' as 'admin' | 'user' | 'supervisor',
+    role: 'user' as any, // Alterado para aceitar as novas roles
     sectorId: '',
     password: '', 
   });
@@ -114,6 +116,18 @@ const UserManagement: React.FC = () => {
       resetForm();
     }
     setIsDialogOpen(true);
+  };
+
+  // Lógica para marcar/desmarcar múltiplos setores (exclusivo Supervisor)
+  const handleSectorToggle = (id: string) => {
+    const currentSectors = formData.sectorId ? formData.sectorId.split(',') : [];
+    let newSectors;
+    if (currentSectors.includes(id)) {
+      newSectors = currentSectors.filter(s => s !== id);
+    } else {
+      newSectors = [...currentSectors, id];
+    }
+    setFormData({ ...formData, sectorId: newSectors.join(',') });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -165,7 +179,7 @@ const UserManagement: React.FC = () => {
       const matchSector = globalSectorFilter === 'all' 
         ? true 
         : globalSectorFilter === 'no-sector' ? !user.sectorId 
-        : user.sectorId === globalSectorFilter;
+        : user.sectorId?.split(',').includes(globalSectorFilter); // Suporte para múltiplos setores no filtro
       const matchRole = globalRoleFilter === 'all' 
         ? true 
         : user.role === globalRoleFilter;
@@ -224,9 +238,14 @@ const UserManagement: React.FC = () => {
                         "text-[10px] uppercase tracking-wide border-0 font-bold",
                         user.role === 'admin' ? "bg-primary/10 text-primary" : 
                         user.role === 'supervisor' ? "bg-violet-100 text-violet-700" : 
+                        user.role === 'diretores' ? "bg-blue-100 text-blue-700" :
+                        user.role === 'gestao' ? "bg-emerald-100 text-emerald-700" :
                         "bg-slate-100 text-slate-700"
                     )}>
-                        {user.role === 'admin' ? 'Administrador' : user.role === 'supervisor' ? 'Supervisor' : 'Consultor'}
+                        {user.role === 'admin' ? 'Administrador' : 
+                         user.role === 'supervisor' ? 'Supervisor' : 
+                         user.role === 'diretores' ? 'Diretor' :
+                         user.role === 'gestao' ? 'Gestão' : 'Consultor'}
                     </Badge>
                 </TableCell>
                 <TableCell>
@@ -299,28 +318,56 @@ const UserManagement: React.FC = () => {
                     <Input id="password" type="password" className="pl-9" value={formData.password} onChange={(e) => setFormData({ ...formData, password: e.target.value })} required={!editingUser} placeholder={editingUser ? "Manter atual" : "******"} />
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="role">Função</Label>
-                    <Select value={formData.role} onValueChange={(v: any) => setFormData({ ...formData, role: v })}>
-                      <SelectTrigger><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="admin">Administrador</SelectItem>
-                        <SelectItem value="supervisor">Supervisor</SelectItem>
-                        <SelectItem value="user">Consultor</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="sector">Setor Vinculado</Label>
-                    <Select value={formData.sectorId?.toString() || ""} onValueChange={(v) => setFormData({ ...formData, sectorId: v })}>
-                      <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
-                      <SelectContent>
-                        {dbSectors.map((s) => (<SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="role">Função</Label>
+                  <Select value={formData.role} onValueChange={(v: any) => setFormData({ ...formData, role: v, sectorId: '' })}>
+                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="admin">Administrador</SelectItem>
+                      <SelectItem value="diretores">Diretor</SelectItem>
+                      <SelectItem value="gestao">Gestão</SelectItem>
+                      <SelectItem value="supervisor">Supervisor</SelectItem>
+                      <SelectItem value="user">Consultor</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
+
+                {/* Bloco de Setores Condicional */}
+                {formData.role === 'supervisor' ? (
+                  <div className="space-y-3 p-3 border rounded-lg bg-muted/20">
+                    <Label className="text-primary font-bold flex items-center gap-2">
+                      <Users2 className="w-4 h-4" /> Setores Monitorados
+                    </Label>
+                    <div className="grid grid-cols-2 gap-2 max-h-[120px] overflow-y-auto pr-2">
+                      {dbSectors.map((s) => (
+                        <div key={s.id} className="flex items-center space-x-2">
+                          <Checkbox 
+                            id={`sec-${s.id}`} 
+                            checked={formData.sectorId.split(',').includes(s.id.toString())}
+                            onCheckedChange={() => handleSectorToggle(s.id.toString())}
+                          />
+                          <label htmlFor={`sec-${s.id}`} className="text-sm font-medium cursor-pointer">
+                            {s.name}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  !['admin', 'diretores', 'gestao'].includes(formData.role) && (
+                    <div className="space-y-2">
+                      <Label htmlFor="sector">Setor Vinculado</Label>
+                      <Select value={formData.sectorId?.toString() || ""} onValueChange={(v) => setFormData({ ...formData, sectorId: v })}>
+                        <SelectTrigger><SelectValue placeholder="Opcional" /></SelectTrigger>
+                        <SelectContent>
+                          {dbSectors.map((s) => (<SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )
+                )}
+
                 <DialogFooter>
                   <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Cancelar</Button>
                   <Button type="submit" variant="hero">Salvar Dados</Button>
@@ -330,6 +377,7 @@ const UserManagement: React.FC = () => {
           </Dialog>
         </div>
 
+        {/* Mantenha o restante do seu componente original aqui (Cards de stats e Filtros) */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Card className="glass-card p-4 flex items-center justify-between border-l-4 border-l-primary">
             <div className="flex items-center gap-3">
@@ -400,6 +448,8 @@ const UserManagement: React.FC = () => {
                         <SelectContent>
                             <SelectItem value="all">Todos Cargos</SelectItem>
                             <SelectItem value="admin">Administradores</SelectItem>
+                            <SelectItem value="diretores">Diretores</SelectItem>
+                            <SelectItem value="gestao">Gestão</SelectItem>
                             <SelectItem value="supervisor">Supervisores</SelectItem>
                             <SelectItem value="user">Consultores</SelectItem>
                         </SelectContent>
@@ -410,10 +460,10 @@ const UserManagement: React.FC = () => {
           </CardHeader>
         </Card>
 
+        {/* Seções de Tabelas (Admin e Equipes) */}
         <Card className="glass-card border-none shadow-none bg-transparent">
           <CardContent className="p-0 space-y-6">
-            {/* Seção de Administração agora recolhível */}
-            {globalFilteredUsers.some(u => u.role === 'admin') && (
+            {globalFilteredUsers.some(u => ['admin', 'diretores', 'gestao'].includes(u.role)) && (
                 <div className="space-y-3">
                     <Accordion type="multiple" className="w-full">
                         <AccordionItem value="admin-section" className="bg-card border rounded-xl shadow-sm px-0">
@@ -421,16 +471,16 @@ const UserManagement: React.FC = () => {
                                 <AccordionTrigger className="hover:no-underline py-0 flex-1">
                                     <span className="flex items-center gap-3 font-bold text-lg text-foreground">
                                         <Shield className="w-5 h-5 text-primary" /> 
-                                        Administração
+                                        Administração e Diretoria
                                         <Badge variant="secondary" className="ml-2">
-                                            {globalFilteredUsers.filter(u => u.role === 'admin').length}
+                                            {globalFilteredUsers.filter(u => ['admin', 'diretores', 'gestao'].includes(u.role)).length}
                                         </Badge>
                                     </span>
                                 </AccordionTrigger>
                             </div>
                             <AccordionContent className="px-4 pb-4 pt-0 border-t">
                                 <div className="pt-4">
-                                    {renderUserTable(globalFilteredUsers.filter(u => u.role === 'admin'))}
+                                    {renderUserTable(globalFilteredUsers.filter(u => ['admin', 'diretores', 'gestao'].includes(u.role)))}
                                 </div>
                             </AccordionContent>
                         </AccordionItem>
@@ -444,7 +494,10 @@ const UserManagement: React.FC = () => {
               </h3>
               <Accordion type="multiple" className="w-full space-y-3">
                 {dbSectors.map((sector) => {
-                  const sectorUsersGlobal = globalFilteredUsers.filter(u => u.role !== 'admin' && u.sectorId === sector.id);
+                  const sectorUsersGlobal = globalFilteredUsers.filter(u => 
+                    !['admin', 'diretores', 'gestao'].includes(u.role) && 
+                    u.sectorId?.split(',').includes(sector.id.toString())
+                  );
                   if (sectorUsersGlobal.length === 0) return null;
                   const isSearching = sectorSearchOpen[sector.id];
                   const localTerm = sectorSearchTerms[sector.id] || '';

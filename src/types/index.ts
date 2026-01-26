@@ -1,10 +1,19 @@
+// export interface User {
+//   id: string;
+//   name: string;
+//   email: string;
+//   role: 'admin' | 'user' | 'supervisor';
+//   sectorId?: string;
+//   password?: string;
+//   active: boolean;
+// }
 export interface User {
   id: string;
   name: string;
   email: string;
-  role: 'admin' | 'user' | 'supervisor';
+  // Atualize esta linha para incluir os novos cargos
+  role: 'admin' | 'user' | 'supervisor' | 'gestao' | 'diretores'; 
   sectorId?: string;
-  password?: string;
   active: boolean;
 }
 

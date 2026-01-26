@@ -9,7 +9,7 @@ import SectorManagement from '@/components/admin/SectorManagement';
 import UserManagement from '@/components/admin/UserManagement';
 import Reports from '@/components/admin/Reports';
 import UsinaManagement from '@/components/admin/UsinaManagement';
-import Comissao from '@/components/admin/Comissao'; // Importação necessária
+import Comissao from '@/components/admin/Comissao'; 
 
 // User Components
 import UserDashboard from '@/components/user/UserDashboard'; 
@@ -23,15 +23,23 @@ const Dashboard: React.FC = () => {
     return <Navigate to="/" replace />;
   }
 
-  // --- Rotas de ADMIN e SUPERVISOR ---
-  if (user.role === 'admin' || user.role === 'supervisor') {
-    // Rotas de Overview e Clientes
+  // --- Nível de Acesso Elevado (Admin, Supervisor, Gestão, Diretores) ---
+  const isHighLevel = ['admin', 'supervisor', 'gestao', 'diretores'].includes(user.role);
+
+  if (isHighLevel) {
+    // Rotas comuns a todos os níveis elevados
     if (location.pathname === '/dashboard') return <AdminOverview />;
     if (location.pathname === '/dashboard/clients') return <AdminDashboard />;
     if (location.pathname === '/dashboard/reports') return <Reports />;
     
-    // Rota de Comissões - Agora reconhecida pelo Dashboard
-    if (location.pathname === '/dashboard/comissoes') return <Comissao />; 
+    // RESTRIÇÃO: Rota de Comissões apenas para ADMIN e DIRETORES
+    if (location.pathname === '/dashboard/comissoes') {
+      if (user.role === 'admin' || user.role === 'diretores') {
+        return <Comissao />;
+      }
+      // Se for Gestão ou Supervisor tentando acessar, volta para o Overview
+      return <Navigate to="/dashboard" replace />;
+    }
     
     // Rotas exclusivas de ADMIN
     if (user.role === 'admin') {
@@ -40,7 +48,7 @@ const Dashboard: React.FC = () => {
       if (location.pathname === '/dashboard/usinas') return <UsinaManagement />;
     }
     
-    // Se a rota começar com /dashboard/ mas não foi capturada acima, volta para o início
+    // Fallback para sub-rotas não mapeadas do dashboard
     if (location.pathname.startsWith('/dashboard/')) {
        return <AdminOverview />;
     }
@@ -57,7 +65,7 @@ const Dashboard: React.FC = () => {
     }
   }
 
-  // Fallback para qualquer outra rota dentro do contexto de Dashboard
+  // Fallback final
   return <Navigate to="/dashboard" replace />;
 };
 

@@ -15,7 +15,7 @@ import {
   PieChart,
   ClipboardList,
   Factory,
-  DollarSign // Adicionado apenas este ícone
+  DollarSign
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -33,31 +33,57 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
     navigate('/');
   };
 
-  const adminLinks = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { href: '/dashboard/comissoes', icon: DollarSign, label: 'Comissões' }, // Adicionado
-    { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios' },
-    { href: '/dashboard/clients', icon: Users, label: 'Clientes' },
-    { href: '/dashboard/sectors', icon: Building2, label: 'Setores' },
-    { href: '/dashboard/usinas', icon: Factory, label: 'Usinas' },
-    { href: '/dashboard/users', icon: UserCog, label: 'Usuários' },
-  ];
+  // Definição de todos os links disponíveis no sistema
+  const menuItems = {
+    dashboard: { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+    comissoes: { href: '/dashboard/comissoes', icon: DollarSign, label: 'Comissões' },
+    reports: { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios' },
+    clients: { href: '/dashboard/clients', icon: Users, label: 'Clientes' },
+    myClients: { href: '/dashboard/my-clients', icon: ClipboardList, label: 'Meus Clientes' },
+    sectors: { href: '/dashboard/sectors', icon: Building2, label: 'Setores' },
+    usinas: { href: '/dashboard/usinas', icon: Factory, label: 'Usinas' },
+    users: { href: '/dashboard/users', icon: UserCog, label: 'Usuários' },
+  };
 
-  const supervisorLinks = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { href: '/comissoes', icon: DollarSign, label: 'Comissões' }, // Adicionado
-    { href: '/dashboard/reports', icon: PieChart, label: 'Relatórios' },
-    { href: '/dashboard/clients', icon: Users, label: 'Clientes' },
-  ];
+  // Lógica de filtragem baseada no cargo (role)
+  const getLinks = () => {
+    const role = user?.role;
 
-  const userLinks = [
-    { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-    { href: '/dashboard/my-clients', icon: ClipboardList, label: 'Meus Clientes' },
-  ];
+    if (role === 'admin') {
+      return [menuItems.dashboard, menuItems.comissoes, menuItems.reports, menuItems.clients, menuItems.sectors, menuItems.usinas, menuItems.users];
+    }
 
-  let links = userLinks;
-  if (user?.role === 'admin') links = adminLinks;
-  else if (user?.role === 'supervisor') links = supervisorLinks;
+    if (role === 'supervisor') {
+      return [menuItems.dashboard,menuItems.reports, menuItems.clients];
+    }
+
+    if (role === 'gestao') {
+      // Ajustado para os requisitos: vê setores mas não as páginas de config
+      return [menuItems.dashboard, menuItems.clients, menuItems.reports];
+    }
+
+    if (role === 'diretores') {
+      // Ajustado para os requisitos: vê clientes, relatórios e comissões
+      return [menuItems.dashboard, menuItems.clients, menuItems.reports, menuItems.comissoes];
+    }
+
+    // Padrão para 'user' (Consultor) ou qualquer outro cargo
+    return [menuItems.dashboard, menuItems.myClients];
+  };
+
+  // Garante que links sempre seja um array para evitar erro no .map()
+  const links = getLinks() || [];
+
+  const getRoleDisplay = (role?: string) => {
+    switch (role) {
+      case 'admin': return 'Administrador';
+      case 'supervisor': return 'Supervisor';
+      case 'gestao': return 'Gestão';
+      case 'diretores': return 'Diretor';
+      case 'user': return 'Consultor(a)';
+      default: return role || 'Usuário';
+    }
+  };
 
   return (
     <>
@@ -98,15 +124,15 @@ const Sidebar: React.FC<SidebarProps> = ({ isOpen, setIsOpen }) => {
           </div>
 
           <div className="px-6 py-4 border-b border-sidebar-border">
-            <p className="text-sm font-medium text-sidebar-foreground">
+            <p className="text-sm font-medium text-sidebar-foreground truncate">
               {user?.name}
             </p>
             <p className="text-xs text-sidebar-foreground/60 capitalize">
-              {user?.role === 'user' ? 'Consultor(a)' : user?.role === 'supervisor' ? 'Supervisor' : 'Administrador'}
+              {getRoleDisplay(user?.role)}
             </p>
           </div>
 
-          <nav className="flex-1 px-4 py-4 space-y-1">
+          <nav className="flex-1 px-4 py-4 space-y-1 overflow-y-auto">
             {links.map((link) => {
               const isActive = location.pathname === link.href;
               return (

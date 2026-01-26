@@ -105,16 +105,27 @@ const AdminDashboard: React.FC = () => {
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
-  const [sectorFilter, setSectorFilter] = useState<string>(
-    isSupervisor && user?.sectorId ? user.sectorId.toString() : 'all'
-  );
+  
+  // AJUSTE: Supervisor agora inicia com 'all' para ver todos os seus setores permitidos de uma vez
+  const [sectorFilter, setSectorFilter] = useState<string>('all');
   const [userFilter, setUserFilter] = useState<string>('all');
-  const [usinaFilter, setUsinaFilter] = useState<string>('all'); // Adicionado
+  const [usinaFilter, setUsinaFilter] = useState<string>('all');
+
+  // FIX: Função isPdf movida para o escopo correto para evitar o erro de ReferenceError
+  const isPdf = (dataUrl: string) => dataUrl?.startsWith('data:application/pdf') || dataUrl?.endsWith('.pdf');
 
   const loadAllData = async () => {
     try {
+      // AJUSTE: Enviando parâmetros de contexto para a API (Role e Múltiplos Setores)
+      // Isso resolve o problema dos relatórios zerados no Supervisor
+      const queryParams = new URLSearchParams({
+        role: user?.role || '',
+        userId: user?.id || '',
+        sectors: user?.sectorId || '' 
+      }).toString();
+
       const [clientsData, sectorsData, usersData, usinasData] = await Promise.all([
-        api.get('/clientes.php'),
+        api.get(`/clientes.php?${queryParams}`),
         api.get('/setores.php'),
         api.get('/usuarios.php'),
         api.get('/usinas.php')
@@ -128,17 +139,16 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  // FIX: Removido 'api' das dependências para parar o loop infinito no Network
   useEffect(() => {
-    loadAllData();
-  }, []);
+    if (user) loadAllData();
+  }, [user]); // Adicionado user como dependência para recarregar ao logar
 
   const clearFilters = () => {
     setSearchTerm('');
     setStatusFilter('all');
-    if (!isSupervisor) setSectorFilter('all');
+    setSectorFilter('all');
     setUserFilter('all');
-    setUsinaFilter('all'); // Reset de usina
+    setUsinaFilter('all');
   };
 
   const [viewingClientDetails, setViewingClientDetails] = useState<Client | null>(null);
@@ -174,9 +184,11 @@ const AdminDashboard: React.FC = () => {
 
   useEffect(() => {
     if (!editingClient && isFormOpen) {
+      // AJUSTE: Ao criar novo, seleciona o primeiro setor disponível do supervisor se houver múltiplos
+      const firstSector = user?.sectorId ? user.sectorId.split(',')[0] : '';
       setFormData(prev => ({
         ...prev,
-        sectorId: isSupervisor ? user?.sectorId || '' : prev.sectorId
+        sectorId: isSupervisor ? firstSector : prev.sectorId
       }));
     }
   }, [isSupervisor, user, isFormOpen, editingClient]);
@@ -208,8 +220,6 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const isPdf = (dataUrl: string) => dataUrl?.startsWith('data:application/pdf') || dataUrl?.endsWith('.pdf');
-
   const handleOpenForm = (client?: Client) => {
     if (client) {
       setEditingClient(client);
@@ -231,12 +241,13 @@ const AdminDashboard: React.FC = () => {
       });
     } else {
       setEditingClient(null);
+      const firstSector = user?.sectorId ? user.sectorId.split(',')[0] : '';
       setFormData({
         name: '',
         email: '',
         cpf: '',
         phone: '',
-        sectorId: isSupervisor ? user?.sectorId || '' : '',
+        sectorId: isSupervisor ? firstSector : '',
         usinaId: '',
         userId: isAdmin ? user?.id || '' : '',
         observations: '',
@@ -312,10 +323,16 @@ const AdminDashboard: React.FC = () => {
     toast({ title: "Copiado!", description: `${label} copiado.` });
   };
 
-  // AJUSTE: Adicionado .toString() e filtro de Usina
+  // AJUSTE: Lógica de filtro local corrigida para suportar múltiplos setores do Supervisor
   const filteredClients = useMemo(() => {
+    const supervisorSectors = user?.sectorId ? user.sectorId.split(',') : [];
+
     return clients.filter((client) => {
-      if (isSupervisor && client.sectorId?.toString() !== user?.sectorId?.toString()) return false;
+      // AJUSTE: Verifica se o setor do cliente está na lista de setores que o supervisor monitora
+      if (isSupervisor) {
+        const clientSector = client.sectorId?.toString() || '';
+        if (!supervisorSectors.includes(clientSector)) return false;
+      }
 
       let matchesSearch = true;
       if (searchTerm) {
@@ -337,10 +354,18 @@ const AdminDashboard: React.FC = () => {
   }, [clients, searchTerm, statusFilter, sectorFilter, userFilter, usinaFilter, isSupervisor, user]);
 
   const availableConsultants = useMemo(() => {
-    if (isSupervisor) return dbUsers.filter(u => u.sectorId?.toString() === user?.sectorId?.toString());
+    const supervisorSectors = user?.sectorId ? user.sectorId.split(',') : [];
+    if (isSupervisor) return dbUsers.filter(u => supervisorSectors.includes(u.sectorId?.toString() || ''));
     if (sectorFilter === 'all') return dbUsers.filter(u => u.role === 'user');
     return dbUsers.filter(u => u.sectorId?.toString() === sectorFilter.toString());
   }, [dbUsers, sectorFilter, isSupervisor, user]);
+
+  // Lista de setores para o filtro (Supervisor só vê os dele)
+  const availableSectorsForFilter = useMemo(() => {
+    const supervisorSectors = user?.sectorId ? user.sectorId.split(',') : [];
+    if (isSupervisor) return dbSectors.filter(s => supervisorSectors.includes(s.id.toString()));
+    return dbSectors;
+  }, [dbSectors, isSupervisor, user]);
 
   useEffect(() => {
     setCurrentPage(1);
@@ -399,10 +424,10 @@ const AdminDashboard: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">
-              {isSupervisor ? `Gestão - ${getSectorName(user?.sectorId)}` : 'Clientes cadastrados'}
+              {isSupervisor ? 'Gestão de Equipes' : 'Clientes cadastrados'}
             </h1>
             <p className="text-muted-foreground mt-1">
-              {isSupervisor ? 'Visualize os clientes do seu setor' : 'Gerencie clientes do sistema'}
+              {isSupervisor ? 'Visualize os clientes dos seus setores monitorados' : 'Gerencie clientes do sistema'}
             </p>
           </div>
 
@@ -475,15 +500,17 @@ const AdminDashboard: React.FC = () => {
                 )}
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {!isSupervisor && (
-                    <div className="space-y-2">
-                      <Label htmlFor="sector">Setor</Label>
-                      <Select value={formData.sectorId?.toString() || ""} onValueChange={(val) => setFormData({ ...formData, sectorId: val, userId: '' })}>
-                        <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o setor" /></SelectTrigger>
-                        <SelectContent>{dbSectors.map((sector) => (<SelectItem key={sector.id} value={sector.id.toString()}>{sector.name}</SelectItem>))}</SelectContent>
-                      </Select>
-                    </div>
-                  )}
+                  <div className="space-y-2">
+                    <Label htmlFor="sector">Setor</Label>
+                    <Select value={formData.sectorId?.toString() || ""} onValueChange={(val) => setFormData({ ...formData, sectorId: val, userId: '' })}>
+                      <SelectTrigger className="h-9"><SelectValue placeholder="Selecione o setor" /></SelectTrigger>
+                      <SelectContent>
+                        {availableSectorsForFilter.map((sector) => (
+                          <SelectItem key={sector.id} value={sector.id.toString()}>{sector.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
                   <div className={cn("space-y-2", isSupervisor && "sm:col-span-2")}>
                     <Label htmlFor="user">Consultor Responsável</Label>
@@ -575,34 +602,38 @@ const AdminDashboard: React.FC = () => {
           ))}
         </div>
 
-        {/* --- BARRA DE FILTROS ALINHADA --- */}
+        {/* --- BARRA DE FILTROS --- */}
         <Card className="bg-muted/40 border-muted-foreground/20 shadow-sm w-full">
           <CardContent className="p-4">
             <div className="flex flex-col lg:flex-row items-center gap-4">
               <div className="flex items-center gap-2 text-sm font-bold shrink-0"><Filter className="w-4 h-4" /> Filtros:</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:flex lg:flex-1 gap-3 w-full">
-                {!isSupervisor && (
-                  <div className="w-full lg:flex-1">
-                    <Select value={sectorFilter} onValueChange={(v) => { setSectorFilter(v); setUserFilter('all'); }}>
-                      <SelectTrigger className="bg-background h-10"><SelectValue placeholder="Setor" /></SelectTrigger>
-                      <SelectContent><SelectItem value="all">Todos Setores</SelectItem>{dbSectors.map((s) => (<SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>))}</SelectContent>
-                    </Select>
-                  </div>
-                )}
+                <div className="w-full lg:flex-1">
+                  <Select value={sectorFilter} onValueChange={(v) => { setSectorFilter(v); setUserFilter('all'); }}>
+                    <SelectTrigger className="bg-background h-10"><SelectValue placeholder="Setor" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos Setores</SelectItem>
+                      {availableSectorsForFilter.map((s) => (
+                        <SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="w-full lg:flex-1">
                   <Select value={usinaFilter} onValueChange={setUsinaFilter}>
                     <SelectTrigger className="bg-background h-10"><SelectValue placeholder="Todas Usinas" /></SelectTrigger>
                     <SelectContent><SelectItem value="all">Todas Usinas</SelectItem>{dbUsinas.map((u) => (<SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>))}</SelectContent>
                   </Select>
                 </div>
-                {(sectorFilter !== 'all' || isSupervisor) && (
-                  <div className="w-full lg:flex-1 animate-in fade-in zoom-in duration-200">
-                    <Select value={userFilter} onValueChange={setUserFilter}>
-                      <SelectTrigger className="bg-background h-10"><SelectValue placeholder="Consultor" /></SelectTrigger>
-                      <SelectContent><SelectItem value="all">Todos Consultores</SelectItem>{availableConsultants.map((u) => (<SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>))}</SelectContent>
-                    </Select>
-                  </div>
-                )}
+                <div className="w-full lg:flex-1 animate-in fade-in zoom-in duration-200">
+                  <Select value={userFilter} onValueChange={setUserFilter}>
+                    <SelectTrigger className="bg-background h-10"><SelectValue placeholder="Consultor" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos Consultores</SelectItem>
+                      {availableConsultants.map((u) => (<SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="w-full lg:flex-1">
                   <Select value={statusFilter} onValueChange={setStatusFilter}>
                     <SelectTrigger className="bg-background h-10"><SelectValue placeholder="Status" /></SelectTrigger>
@@ -619,7 +650,7 @@ const AdminDashboard: React.FC = () => {
           </CardContent>
         </Card>
 
-        {/* Clients Table */}
+        {/* Tabela de Clientes */}
         <Card className="glass-card">
           <CardContent className="p-0">
             <div className="overflow-x-auto">
@@ -786,6 +817,7 @@ const AdminDashboard: React.FC = () => {
           </DialogContent>
         </Dialog>
 
+        {/* Modal Preview Arquivo */}
         <Dialog open={!!viewingFile} onOpenChange={(open) => !open && setViewingFile(null)}>
           <DialogContent className="fixed !left-0 !top-0 !translate-x-0 !translate-y-0 w-screen h-screen max-w-none p-0 bg-black/90 backdrop-blur-md border-none z-[100] flex items-center justify-center">
             <div className="relative w-full h-full flex flex-col items-center justify-center">
