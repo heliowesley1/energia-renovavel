@@ -608,30 +608,27 @@ const Reports: React.FC = () => {
           </Card>
 
           {/* CARD CONSULTOR DESTAQUE - AJUSTADO PARA VERDE */}
-          <Card className="border-l-4 border-l-emerald-500 flex flex-col hover:shadow-md transition-shadow">
-            <CardHeader className="pb-2">
+          <Card className="border-l-4 border-l-emerald-500 flex flex-col hover:shadow-md transition-shadow min-h-0">
+            <CardHeader className="pb-2 shrink-0">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-emerald-500" /> Consultor
                 Destaque
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 flex flex-col justify-center">
+            <CardContent className="flex-1 flex flex-col justify-center min-h-0 overflow-hidden">
               {teamPerformance.length > 0 ? (
-                <div className="flex items-center justify-between bg-emerald-50/50 p-3 rounded-xl border border-emerald-100">
-                  <div className="flex items-center gap-3">
-                    <div className="w-12 h-12 bg-emerald-500 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-sm">
+                <div className="flex items-center justify-between bg-emerald-50/50 p-3 rounded-xl border border-emerald-100 flex-wrap gap-2">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="w-12 h-12 shrink-0 bg-emerald-500 rounded-full flex items-center justify-center text-white font-bold text-xl shadow-sm">
                       {teamPerformance[0].name.charAt(0).toUpperCase()}
                     </div>
                     <div className="min-w-0">
-                      <p className="font-bold text-emerald-900 truncate">
+                      <p className="font-bold text-emerald-900 truncate text-sm">
                         {teamPerformance[0].name.split(" ")[0]}
-                      </p>
-                      <p className="text-[10px] uppercase text-emerald-600 font-bold tracking-wider">
-                        Top Performance
                       </p>
                     </div>
                   </div>
-                  <div className="text-right">
+                  <div className="text-right shrink-0">
                     <p className="text-2xl font-black text-emerald-600">
                       {teamPerformance[0].approved}
                     </p>
@@ -678,9 +675,9 @@ const Reports: React.FC = () => {
                     <TableCell className="text-right">
                       {totalClients > 0
                         ? (
-                            (clientsByStatus.formalized / totalClients) *
-                            100
-                          ).toFixed(0)
+                          (clientsByStatus.formalized / totalClients) *
+                          100
+                        ).toFixed(0)
                         : 0}
                       %
                     </TableCell>
@@ -695,9 +692,9 @@ const Reports: React.FC = () => {
                     <TableCell className="text-right">
                       {totalClients > 0
                         ? (
-                            (clientsByStatus.pending / totalClients) *
-                            100
-                          ).toFixed(0)
+                          (clientsByStatus.pending / totalClients) *
+                          100
+                        ).toFixed(0)
                         : 0}
                       %
                     </TableCell>
@@ -712,9 +709,9 @@ const Reports: React.FC = () => {
                     <TableCell className="text-right">
                       {totalClients > 0
                         ? (
-                            (clientsByStatus.waiting / totalClients) *
-                            100
-                          ).toFixed(0)
+                          (clientsByStatus.waiting / totalClients) *
+                          100
+                        ).toFixed(0)
                         : 0}
                       %
                     </TableCell>

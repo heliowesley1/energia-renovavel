@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
-import { 
-  DollarSign, Loader2, Filter, Trophy, BarChart3, Eraser, FileSpreadsheet 
+import {
+  DollarSign, Loader2, Filter, Trophy, BarChart3, Eraser, FileSpreadsheet
 } from 'lucide-react';
 import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
 
@@ -84,18 +84,91 @@ const Comissao = () => {
 
   const handleExportExcel = () => {
     if (dadosFiltrados.length === 0) return;
-    const headers = ["SETOR", "CONSULTOR", ...usinas.map(u => u.name), "TOTAL CONTRATOS", "COMISSÃO TOTAL"];
+    const headers = ["SETOR", "CONSULTOR", ...usinas.map(u => u.name), "TOTAL CONTRATOS", "COMISSÃO TOTAL (R$)"];
+
+    // Calcular comissão por contrato de cada usina
+    const sumario = usinas.map(u => {
+      let totalComissao = 0;
+      let totalContratos = 0;
+      dadosFiltrados.forEach(item => {
+        const info = item.detalhes_usinas?.[u.name];
+        if (info) {
+          totalComissao += info.valor || 0;
+          totalContratos += info.qtd || 0;
+        }
+      });
+      const comissaoPorContrato = totalContratos > 0 ? (totalComissao / totalContratos) : 0;
+      return {
+        name: u.name,
+        comissaoPorContrato
+      };
+    });
+
+    // Determinar o período filtrado
+    let periodoTexto = "Todo o período";
+    if (periodPreset === "today" && dateRange.from && dateRange.to) {
+      periodoTexto = `Hoje (${format(new Date(dateRange.from), 'dd/MM/yyyy')})`;
+    } else if (periodPreset === "7days" && dateRange.from && dateRange.to) {
+      periodoTexto = `Últimos 7 dias (${format(new Date(dateRange.from), 'dd/MM/yyyy')} até ${format(new Date(dateRange.to), 'dd/MM/yyyy')})`;
+    } else if (periodPreset === "month" && dateRange.from && dateRange.to) {
+      periodoTexto = `Este mês (${format(new Date(dateRange.from), 'dd/MM/yyyy')} até ${format(new Date(dateRange.to), 'dd/MM/yyyy')})`;
+    } else if (periodPreset === "custom" && dateRange.from && dateRange.to) {
+      periodoTexto = `Personalizado (${format(new Date(dateRange.from), 'dd/MM/yyyy')} até ${format(new Date(dateRange.to), 'dd/MM/yyyy')})`;
+    }
+
+    // Montar título e período com destaque no título
+    const tituloHtml = `
+      <table style="width:100%;border-collapse:collapse;margin-bottom:0;">
+        <tr>
+          <td style="font-size:22px;text-align:center;margin-bottom:2px;font-family:sans-serif;padding:10px 0 2px 0;font-weight:bold;color:#111; background:#fff;" colspan="7">Relatório Comissões</td>
+        </tr>
+        <tr style="background:#f6fef9;">
+          <td style="font-size:14px;text-align:center;margin-bottom:12px;font-family:sans-serif;padding:0 0 12px 0;" colspan="7">Período: <b>${periodoTexto}</b></td>
+        </tr>
+      </table>
+    `;
+
+    // Montar sumário em HTML
+    const sumarioHtml = `
+      <table border="1" style="margin-bottom:10px">
+        <tr bgcolor="#f0fdf4">
+          <th colspan="2" style="text-align:center;vertical-align:middle">Sumário: Comissão por Contrato de Cada Usina</th>
+        </tr>
+        <tr>
+          <th style="text-align:center;vertical-align:middle">Usina</th>
+          <th style="text-align:center;vertical-align:middle">Comissão por Contrato (R$)</th>
+        </tr>
+        ${sumario.map(s => `
+          <tr>
+            <td style="text-align:center;vertical-align:middle">${s.name}</td>
+            <td style="text-align:center;vertical-align:middle">R$ ${s.comissaoPorContrato.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
+          </tr>
+        `).join("")}
+      </table>
+    `;
+
+    // Espaçamento visual entre sumário e relatório (linhas vazias)
+    const spacerHtml = `<table style="margin-bottom:10px"><tr><td colspan="${headers.length}">&nbsp;</td></tr><tr><td colspan="${headers.length}">&nbsp;</td></tr></table>`;
+
+    // Montar linhas do relatório, formatando valores como moeda e centralizando todas as células
+    const cellStyle = "text-align:center;vertical-align:middle";
     const rows = dadosFiltrados.map(item => `
       <tr>
-        <td>${item.setor}</td>
-        <td>${(item.consultor || "").toUpperCase()}</td>
-        ${usinas.map(u => `<td>${item.detalhes_usinas?.[u.name]?.qtd || 0}</td>`).join("")}
-        <td>${item.contratos}</td>
-        <td>${(item.total_comissao || 0).toFixed(2)}</td>
+        <td style="${cellStyle}">${item.setor}</td>
+        <td style="${cellStyle}">${(item.consultor || "").toUpperCase()}</td>
+        ${usinas.map(u => {
+      const qtd = item.detalhes_usinas?.[u.name]?.qtd || 0;
+      const valor = item.detalhes_usinas?.[u.name]?.valor || 0;
+      return `<td style="${cellStyle}"><div>${qtd}</div><div style='font-size:10px;color:#555;'>R$ ${valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div></td>`;
+    }).join("")}
+        <td style="${cellStyle}">${item.contratos}</td>
+        <td style="${cellStyle}">R$ ${(item.total_comissao || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
       </tr>
     `).join("");
 
-    const template = `<html><meta charset="UTF-8"><body><table border="1"><tr bgcolor="#f0fdf4">${headers.map(h => `<th>${h}</th>`).join("")}</tr>${rows}</table></body></html>`;
+    // Centralizar também os headers
+    const thStyle = "text-align:center;vertical-align:middle";
+    const template = `<html><meta charset="UTF-8"><body>${tituloHtml}${sumarioHtml}${spacerHtml}<table border="1"><tr bgcolor="#f0fdf4">${headers.map(h => `<th style='${thStyle}'>${h}</th>`).join("")}</tr>${rows}</table></body></html>`;
     const link = document.createElement("a");
     link.href = URL.createObjectURL(new Blob([template], { type: "application/vnd.ms-excel" }));
     link.download = `Comissoes_${format(new Date(), "ddMMyy")}.xls`;
@@ -151,9 +224,9 @@ const Comissao = () => {
                 </Select>
                 {periodPreset === "custom" && (
                   <div className="flex items-center gap-2">
-                    <Input type="date" className="h-9 w-[155px] text-xs bg-background px-3" value={dateRange.from || ""} onChange={(e) => setDateRange(prev => ({...prev, from: e.target.value}))} />
+                    <Input type="date" className="h-9 w-[155px] text-xs bg-background px-3" value={dateRange.from || ""} onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value }))} />
                     <span className="text-[10px] font-bold">ATÉ</span>
-                    <Input type="date" className="h-9 w-[155px] text-xs bg-background px-3" value={dateRange.to || ""} onChange={(e) => setDateRange(prev => ({...prev, to: e.target.value}))} />
+                    <Input type="date" className="h-9 w-[155px] text-xs bg-background px-3" value={dateRange.to || ""} onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value }))} />
                   </div>
                 )}
                 <Button variant="ghost" size="icon" onClick={clearFilters} className="h-9 w-9 text-muted-foreground hover:text-destructive"><Eraser className="w-5 h-5" /></Button>
@@ -183,19 +256,23 @@ const Comissao = () => {
           </Card>
 
           <Card className="md:col-span-2 shadow-sm flex flex-col min-h-[110px]">
-            <CardHeader className="py-2 bg-muted/20 border-b"><CardTitle className="text-xs font-bold uppercase text-black flex items-center gap-2"><BarChart3 className="w-3 h-3"/> Média por Usina</CardTitle></CardHeader>
+            <CardHeader className="py-2 bg-muted/20 border-b"><CardTitle className="text-xs font-bold uppercase text-black flex items-center gap-2"><BarChart3 className="w-3 h-3" /> Média por Usina</CardTitle></CardHeader>
             <CardContent className="p-3 flex-1">
               <div className="flex flex-wrap gap-2 justify-start items-center">
-                {usinas.map(u => {
-                  const totalU = dadosFiltrados.reduce((acc, curr) => acc + (curr.detalhes_usinas?.[u.name]?.qtd || 0), 0);
-                  const media = Math.round(totalU / (dadosFiltrados.length || 1));
-                  return (
-                    <div key={u.id} className="flex-1 min-w-[100px] text-center p-2 border rounded bg-white flex flex-col justify-center shadow-sm">
-                      <p className="text-[9px] uppercase font-bold text-black truncate">{u.name}</p>
-                      <p className="text-lg font-bold text-black">{media}</p>
-                    </div>
-                  );
-                })}
+                {(() => {
+                  // Soma total de contratos de todas as usinas
+                  const totalContratos = usinas.reduce((acc, u) => acc + dadosFiltrados.reduce((a, curr) => a + (curr.detalhes_usinas?.[u.name]?.qtd || 0), 0), 0);
+                  return usinas.map(u => {
+                    const totalU = dadosFiltrados.reduce((acc, curr) => acc + (curr.detalhes_usinas?.[u.name]?.qtd || 0), 0);
+                    const percent = totalContratos > 0 ? Math.round((totalU / totalContratos) * 100) : 0;
+                    return (
+                      <div key={u.id} className="flex-1 min-w-[100px] text-center p-2 border rounded bg-white flex flex-col justify-center shadow-sm">
+                        <p className="text-[9px] uppercase font-bold text-black truncate">{u.name}</p>
+                        <p className="text-lg font-bold text-black">{percent}%</p>
+                      </div>
+                    );
+                  });
+                })()}
               </div>
             </CardContent>
           </Card>
