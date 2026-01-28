@@ -11,11 +11,11 @@ import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { format, subDays, startOfMonth, endOfMonth, eachDayOfInterval, startOfDay, endOfDay } from 'date-fns';
 import { type DateRange } from 'react-day-picker';
-import { 
-  Users, 
+import {
+  Users,
   Filter,
-  TrendingUp, 
-  CheckCircle2, 
+  TrendingUp,
+  CheckCircle2,
   Clock,
   Eraser,
   BarChart3,
@@ -40,17 +40,21 @@ const AdminOverview: React.FC = () => {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-  const [resClients, resUsers, resSectors, resUsinas] = await Promise.all([
-    api.get('clientes.php'),
-    api.get('usuarios.php'),
-    api.get('setores.php'),
-    api.get('usinas.php')
-  ]);
+        const [resClients, resUsers, resSectors, resUsinas] = await Promise.all([
+          api.get('clientes.php'),
+          api.get('usuarios.php'),
+          api.get('setores.php'),
+          api.get('usinas.php')
+        ]);
         // Garante que pegamos os dados mesmo se a API retornar { data: [...] }
-      setDbClients(Array.isArray(resClients) ? resClients : (resClients?.data || []));
-      setDbUsers(Array.isArray(resUsers) ? resUsers : (resUsers?.data || []));
-      setDbSectors(Array.isArray(resSectors) ? resSectors : (resSectors?.data || []));
-      setDbUsinas(Array.isArray(resUsinas) ? resUsinas : (resUsinas?.data || []));
+        const clientsData = Array.isArray(resClients) ? resClients : (resClients?.data || []);
+        const usersData = Array.isArray(resUsers) ? resUsers : (resUsers?.data || []);
+        const sectorsData = Array.isArray(resSectors) ? resSectors : (resSectors?.data || []);
+        const usinasData = Array.isArray(resUsinas) ? resUsinas : (resUsinas?.data || []);
+        setDbClients(clientsData);
+        setDbUsers(usersData);
+        setDbSectors(sectorsData);
+        setDbUsinas(usinasData);
       } catch (error) {
         console.error("Erro ao processar dados do dashboard:", error);
       }
@@ -75,11 +79,11 @@ const AdminOverview: React.FC = () => {
 
     return days.map(day => {
       const count = dbClients.filter(c => {
-  if (!c.createdAt) return false;
-  // Substitui o espaço por 'T' para o formato ISO ser aceito em todos os navegadores
-  const cDate = new Date(c.createdAt.replace(' ', 'T')); 
-  return format(cDate, 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd');
-}).length;
+        if (!c.createdAt) return false;
+        // Substitui o espaço por 'T' para o formato ISO ser aceito em todos os navegadores
+        const cDate = new Date(c.createdAt.replace(' ', 'T'));
+        return format(cDate, 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd');
+      }).length;
       return {
         date: format(day, 'dd/MM'),
         quantidade: count,
@@ -95,7 +99,7 @@ const AdminOverview: React.FC = () => {
       case 'today': setDate({ from: startOfDay(today), to: endOfDay(today) }); break;
       case '7days': setDate({ from: subDays(today, 7), to: today }); break;
       case 'month': setDate({ from: startOfMonth(today), to: endOfMonth(today) }); break;
-      case 'custom': break; 
+      case 'custom': break;
       case 'all': setDate(undefined); break;
     }
   };
@@ -112,24 +116,30 @@ const AdminOverview: React.FC = () => {
   // --- Lógica de Filtragem ---
   const filteredData = useMemo(() => {
   return dbClients.filter(client => {
-    // Forçamos ambos os lados a serem String para que 1 seja igual a "1"
-    const matchSector = isSupervisor 
-  ? client.sectorId?.toString() === user?.sectorId?.toString() 
-  : (selectedSector === 'all' || (client.sectorId && client.sectorId.toString() === selectedSector));
+    // 1. Filtro de Setor (forçando string e tratando nulos)
+    const clientSectorId = client.sectorId?.toString();
+    const userSectorId = user?.sectorId?.toString();
     
+    const matchSector = isSupervisor 
+      ? clientSectorId === userSectorId 
+      : (selectedSector === 'all' || clientSectorId === selectedSector);
+    
+    // 2. Outros filtros (Usina e Usuário)
     const matchUsina = selectedUsina === 'all' || client.usinaId?.toString() === selectedUsina;
     const matchUser = selectedUser === 'all' || client.userId?.toString() === selectedUser;
     const matchStatus = selectedStatus === 'all' || client.status === selectedStatus;
     
+    // 3. Filtro de Data (Verifique se 'periodPreset' está em 'all')
     let matchDate = true;
     if (date?.from) {
-      const clientDate = new Date(client.createdAt);
+      const clientDate = new Date(client.createdAt?.replace(' ', 'T')); // Correção para formato MySQL
       if (date.to) {
         matchDate = clientDate >= startOfDay(date.from) && clientDate <= endOfDay(date.to);
       } else {
         matchDate = clientDate >= startOfDay(date.from);
       }
     }
+    
     return matchSector && matchUsina && matchUser && matchStatus && matchDate;
   });
 }, [dbClients, selectedSector, selectedUsina, selectedUser, selectedStatus, date, isSupervisor, user]);
@@ -148,13 +158,13 @@ const AdminOverview: React.FC = () => {
   const formalizedPerc = total > 0 ? (formalized / total) * 100 : 0;
   const waitingPerc = total > 0 ? (waiting / total) * 100 : 0;
   const pendingPerc = total > 0 ? (pending / total) * 100 : 0;
-  
+
   const activeConsultantIds = Array.from(new Set(filteredData.map(c => c.userId)));
 
   return (
     <DashboardLayout>
       <div className="space-y-6 animate-fade-in pb-10">
-        
+
         {/* Cabeçalho */}
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div className="space-y-1">
@@ -174,7 +184,7 @@ const AdminOverview: React.FC = () => {
               <div className="flex items-center gap-2 text-sm font-bold text-foreground shrink-0">
                 <Filter className="w-4 h-4" /> Filtros:
               </div>
-              
+
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:flex lg:flex-1 gap-3 w-full">
                 {!isSupervisor && (
                   <div className="w-full lg:flex-1">
@@ -238,18 +248,18 @@ const AdminOverview: React.FC = () => {
                 {/* --- CAMPOS DE DATA PERSONALIZADA (ESTILO RELATÓRIOS) --- */}
                 {periodPreset === 'custom' && (
                   <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-300">
-                    <Input 
-                      type="date" 
-                      className="h-10 bg-background w-auto" 
+                    <Input
+                      type="date"
+                      className="h-10 bg-background w-auto"
                       onChange={(e) => {
                         const d = e.target.value ? new Date(e.target.value + 'T00:00:00') : undefined;
                         setDate(prev => ({ ...prev, from: d }));
                       }}
                     />
                     <span className="text-muted-foreground text-xs font-bold uppercase">Até</span>
-                    <Input 
-                      type="date" 
-                      className="h-10 bg-background w-auto" 
+                    <Input
+                      type="date"
+                      className="h-10 bg-background w-auto"
                       onChange={(e) => {
                         const d = e.target.value ? new Date(e.target.value + 'T23:59:59') : undefined;
                         setDate(prev => ({ ...prev, to: d }));
@@ -339,10 +349,10 @@ const AdminOverview: React.FC = () => {
                         {dbUsers.find(u => u.id.toString() === client.userId.toString())?.name || 'N/A'} • {format(new Date(client.createdAt), "dd/MM/yyyy")}
                       </span>
                     </div>
-                    <div className={cn("px-2 py-1 rounded text-[10px] font-bold uppercase border", 
-                      client.status === 'formalized' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 
-                      client.status === 'waiting_formalization' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' : 
-                      'bg-orange-50 text-orange-700 border-orange-200')}>
+                    <div className={cn("px-2 py-1 rounded text-[10px] font-bold uppercase border",
+                      client.status === 'formalized' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' :
+                        client.status === 'waiting_formalization' ? 'bg-indigo-50 text-indigo-700 border-indigo-200' :
+                          'bg-orange-50 text-orange-700 border-orange-200')}>
                       {client.status === 'formalized' ? 'Formalizado' : client.status === 'waiting_formalization' ? 'Ag. Formalização' : 'Pendente'}
                     </div>
                   </div>
@@ -359,27 +369,27 @@ const AdminOverview: React.FC = () => {
               <CardDescription>Produção total por consultor</CardDescription>
             </CardHeader>
             <CardContent className="flex-1 overflow-auto max-h-[450px]">
-                <div className="space-y-4">
-                  {activeConsultantIds.map(userId => {
-                    const uData = dbUsers.find(u => u.id.toString() === userId.toString());
-                    if (!uData) return null;
-                    const count = filteredData.filter(c => c.userId.toString() === userId.toString()).length;
-                    const userFormalized = filteredData.filter(c => c.userId.toString() === userId.toString() && c.status === 'formalized').length;
-                    return (
-                      <div key={userId} className="flex items-center gap-3">
-                        <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-primary/10 text-primary font-bold">{uData.name.substring(0,2).toUpperCase()}</AvatarFallback></Avatar>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold truncate">{uData.name}</p>
-                          <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-bold uppercase">
-                            <span>{count} Leads</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span className="text-emerald-600">{userFormalized} Form.</span>
-                          </div>
+              <div className="space-y-4">
+                {activeConsultantIds.map(userId => {
+                  const uData = dbUsers.find(u => u.id.toString() === userId.toString());
+                  if (!uData) return null;
+                  const count = filteredData.filter(c => c.userId.toString() === userId.toString()).length;
+                  const userFormalized = filteredData.filter(c => c.userId.toString() === userId.toString() && c.status === 'formalized').length;
+                  return (
+                    <div key={userId} className="flex items-center gap-3">
+                      <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-primary/10 text-primary font-bold">{uData.name.substring(0, 2).toUpperCase()}</AvatarFallback></Avatar>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate">{uData.name}</p>
+                        <div className="flex items-center gap-2 text-[10px] text-muted-foreground font-bold uppercase">
+                          <span>{count} Leads</span><span className="w-1 h-1 rounded-full bg-muted-foreground/40" /><span className="text-emerald-600">{userFormalized} Form.</span>
                         </div>
-                        <div className="text-sm font-bold text-zinc-900">{count}</div>
                       </div>
-                    );
-                  })}
-                  {activeConsultantIds.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Sem atividades no filtro.</p>}
-                </div>
+                      <div className="text-sm font-bold text-zinc-900">{count}</div>
+                    </div>
+                  );
+                })}
+                {activeConsultantIds.length === 0 && <p className="text-sm text-muted-foreground text-center py-8">Sem atividades no filtro.</p>}
+              </div>
             </CardContent>
           </Card>
         </div>
