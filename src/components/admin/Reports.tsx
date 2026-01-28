@@ -76,10 +76,10 @@ const Reports: React.FC = () => {
     const loadReportsData = async () => {
       try {
         const [c, u, s, us] = await Promise.all([
-          api.get("/clientes.php"),
-          api.get("/usuarios.php"),
-          api.get("/setores.php"),
-          api.get("/usinas.php"),
+          api.get("clientes.php"),
+          api.get("usuarios.php"),
+          api.get("setores.php"),
+          api.get("usinas.php"),
         ]);
         setDbClients(c || []);
         setDbUsers(u || []);
@@ -158,47 +158,40 @@ const Reports: React.FC = () => {
 
   // --- LÓGICA DE FILTRAGEM ---
   const filteredData = useMemo(() => {
-    const data = dbClients.filter((client) => {
-      const matchSector = isSupervisor
-        ? client.sectorId === user?.sectorId
-        : selectedSector === "all" || client.sectorId === selectedSector;
+  const data = dbClients.filter((client) => {
+    // Adicionado .toString() para evitar erro de comparação número vs string
+    const matchSector = isSupervisor
+      ? client.sectorId?.toString() === user?.sectorId?.toString()
+      : selectedSector === "all" || client.sectorId?.toString() === selectedSector;
 
-      const matchUser =
-        selectedUser === "all" || client.userId === selectedUser;
-      const matchStatus =
-        selectedStatus === "all" || client.status === selectedStatus;
+    const matchUser =
+      selectedUser === "all" || client.userId?.toString() === selectedUser;
+    const matchStatus =
+      selectedStatus === "all" || client.status === selectedStatus;
 
-      let matchDate = true;
-      if (date?.from) {
-        const clientDate = new Date(client.createdAt);
-        const fromDate = new Date(date.from);
-        fromDate.setHours(0, 0, 0, 0);
+    let matchDate = true;
+    if (date?.from) {
+      const clientDate = new Date(client.createdAt);
+      const fromDate = new Date(date.from);
+      fromDate.setHours(0, 0, 0, 0);
 
-        if (date.to) {
-          const toDate = new Date(date.to);
-          toDate.setHours(23, 59, 59, 999);
-          matchDate = clientDate >= fromDate && clientDate <= toDate;
-        } else {
-          matchDate = clientDate >= fromDate;
-        }
+      if (date.to) {
+        const toDate = new Date(date.to);
+        toDate.setHours(23, 59, 59, 999);
+        matchDate = clientDate >= fromDate && clientDate <= toDate;
+      } else {
+        matchDate = clientDate >= fromDate;
       }
+    }
 
-      return matchSector && matchUser && matchStatus && matchDate;
-    });
+    return matchSector && matchUser && matchStatus && matchDate;
+  });
 
-    return data.sort(
-      (a, b) =>
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-    );
-  }, [
-    dbClients,
-    selectedSector,
-    selectedUser,
-    selectedStatus,
-    date,
-    isSupervisor,
-    user?.sectorId,
-  ]);
+  return data.sort(
+    (a, b) =>
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
+  );
+}, [dbClients, selectedSector, selectedUser, selectedStatus, date, isSupervisor, user]);
 
   const availableConsultants = useMemo(() => {
     if (isSupervisor) {

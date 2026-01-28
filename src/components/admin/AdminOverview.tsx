@@ -40,16 +40,17 @@ const AdminOverview: React.FC = () => {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        const [resClients, resUsers, resSectors, resUsinas] = await Promise.all([
-          api.get('/clientes.php').catch(() => []),
-          api.get('/usuarios.php').catch(() => []),
-          api.get('/setores.php').catch(() => []),
-          api.get('/usinas.php').catch(() => [])
-        ]);
-        setDbClients(Array.isArray(resClients) ? resClients : []);
-        setDbUsers(Array.isArray(resUsers) ? resUsers : []);
-        setDbSectors(Array.isArray(resSectors) ? resSectors : []);
-        setDbUsinas(Array.isArray(resUsinas) ? resUsinas : []);
+  const [resClients, resUsers, resSectors, resUsinas] = await Promise.all([
+    api.get('clientes.php'),
+    api.get('usuarios.php'),
+    api.get('setores.php'),
+    api.get('usinas.php')
+  ]);
+        // Garante que pegamos os dados mesmo se a API retornar { data: [...] }
+      setDbClients(Array.isArray(resClients) ? resClients : (resClients?.data || []));
+      setDbUsers(Array.isArray(resUsers) ? resUsers : (resUsers?.data || []));
+      setDbSectors(Array.isArray(resSectors) ? resSectors : (resSectors?.data || []));
+      setDbUsinas(Array.isArray(resUsinas) ? resUsinas : (resUsinas?.data || []));
       } catch (error) {
         console.error("Erro ao processar dados do dashboard:", error);
       }
@@ -74,9 +75,11 @@ const AdminOverview: React.FC = () => {
 
     return days.map(day => {
       const count = dbClients.filter(c => {
-        const cDate = new Date(c.createdAt);
-        return format(cDate, 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd');
-      }).length;
+  if (!c.createdAt) return false;
+  // Substitui o espaço por 'T' para o formato ISO ser aceito em todos os navegadores
+  const cDate = new Date(c.createdAt.replace(' ', 'T')); 
+  return format(cDate, 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd');
+}).length;
       return {
         date: format(day, 'dd/MM'),
         quantidade: count,
@@ -108,24 +111,28 @@ const AdminOverview: React.FC = () => {
 
   // --- Lógica de Filtragem ---
   const filteredData = useMemo(() => {
-    return dbClients.filter(client => {
-      const matchSector = isSupervisor ? client.sectorId?.toString() === user?.sectorId?.toString() : (selectedSector === 'all' || client.sectorId?.toString() === selectedSector);
-      const matchUsina = selectedUsina === 'all' || client.usinaId?.toString() === selectedUsina;
-      const matchUser = selectedUser === 'all' || client.userId?.toString() === selectedUser;
-      const matchStatus = selectedStatus === 'all' || client.status === selectedStatus;
-      let matchDate = true;
-      if (date?.from) {
-        const clientDate = new Date(client.createdAt);
-        if (date.to) {
-          matchDate = clientDate >= startOfDay(date.from) && clientDate <= endOfDay(date.to);
-        } else {
-          matchDate = clientDate >= startOfDay(date.from);
-        }
+  return dbClients.filter(client => {
+    // Forçamos ambos os lados a serem String para que 1 seja igual a "1"
+    const matchSector = isSupervisor 
+  ? client.sectorId?.toString() === user?.sectorId?.toString() 
+  : (selectedSector === 'all' || (client.sectorId && client.sectorId.toString() === selectedSector));
+    
+    const matchUsina = selectedUsina === 'all' || client.usinaId?.toString() === selectedUsina;
+    const matchUser = selectedUser === 'all' || client.userId?.toString() === selectedUser;
+    const matchStatus = selectedStatus === 'all' || client.status === selectedStatus;
+    
+    let matchDate = true;
+    if (date?.from) {
+      const clientDate = new Date(client.createdAt);
+      if (date.to) {
+        matchDate = clientDate >= startOfDay(date.from) && clientDate <= endOfDay(date.to);
+      } else {
+        matchDate = clientDate >= startOfDay(date.from);
       }
-      return matchSector && matchUsina && matchUser && matchStatus && matchDate;
-    });
-  }, [dbClients, selectedSector, selectedUsina, selectedUser, selectedStatus, date, isSupervisor, user]);
-
+    }
+    return matchSector && matchUsina && matchUser && matchStatus && matchDate;
+  });
+}, [dbClients, selectedSector, selectedUsina, selectedUser, selectedStatus, date, isSupervisor, user]);
   const availableConsultants = useMemo(() => {
     if (isSupervisor) return dbUsers.filter(u => u.sectorId?.toString() === user?.sectorId?.toString());
     if (selectedSector === 'all') return dbUsers.filter(u => u.role === 'user');
