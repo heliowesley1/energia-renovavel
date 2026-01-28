@@ -355,9 +355,19 @@ const AdminDashboard: React.FC = () => {
 
   const availableConsultants = useMemo(() => {
     const supervisorSectors = user?.sectorId ? user.sectorId.split(',') : [];
-    if (isSupervisor) return dbUsers.filter(u => supervisorSectors.includes(u.sectorId?.toString() || ''));
-    if (sectorFilter === 'all') return dbUsers.filter(u => u.role === 'user');
-    return dbUsers.filter(u => u.sectorId?.toString() === sectorFilter.toString());
+    
+    // AJUSTE: Filtra usuários que estão nos setores permitidos do supervisor
+    // e inclui supervisores no filtro para permitir monitorar produção de gestores
+    if (isSupervisor) {
+      return dbUsers.filter(u => 
+        (u.role === 'user' || u.role === 'supervisor') && 
+        supervisorSectors.includes(u.sectorId?.toString() || '')
+      );
+    }
+    
+    // Para Admin
+    if (sectorFilter === 'all') return dbUsers.filter(u => u.role === 'user' || u.role === 'supervisor');
+    return dbUsers.filter(u => u.sectorId?.toString() === sectorFilter.toString() && (u.role === 'user' || u.role === 'supervisor'));
   }, [dbUsers, sectorFilter, isSupervisor, user]);
 
   // Lista de setores para o filtro (Supervisor só vê os dele)
@@ -627,7 +637,7 @@ const AdminDashboard: React.FC = () => {
                 </div>
                 <div className="w-full lg:flex-1 animate-in fade-in zoom-in duration-200">
                   <Select value={userFilter} onValueChange={setUserFilter}>
-                    <SelectTrigger className="bg-background h-10"><SelectValue placeholder="Consultor" /></SelectTrigger>
+                    <SelectTrigger className="bg-background h-10"><SelectValue placeholder="Consultor/Sup." /></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="all">Todos Consultores</SelectItem>
                       {availableConsultants.map((u) => (<SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>))}

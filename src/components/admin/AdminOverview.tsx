@@ -40,40 +40,45 @@ const AdminOverview: React.FC = () => {
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
+        // AJUSTE: Enviando múltiplos setores para a API
+        const queryParams = new URLSearchParams({
+          role: user?.role || '',
+          userId: user?.id || '',
+          sectors: user?.sectorId || '' 
+        }).toString();
+
         const [resClients, resUsers, resSectors, resUsinas] = await Promise.all([
-          api.get('clientes.php'),
-          api.get('usuarios.php'),
-          api.get('setores.php'),
-          api.get('usinas.php')
+          api.get(`/clientes.php?${queryParams}`),
+          api.get('/usuarios.php'),
+          api.get('/setores.php'),
+          api.get('/usinas.php')
         ]);
-        // Garante que pegamos os dados mesmo se a API retornar { data: [...] }
+
         const clientsData = Array.isArray(resClients) ? resClients : (resClients?.data || []);
         const usersData = Array.isArray(resUsers) ? resUsers : (resUsers?.data || []);
         const sectorsData = Array.isArray(resSectors) ? resSectors : (resSectors?.data || []);
         const usinasData = Array.isArray(resUsinas) ? resUsinas : (resUsinas?.data || []);
-        
-        console.log("API Clientes Raw:", clientsData); // Log para depuração
         
         setDbClients(clientsData);
         setDbUsers(usersData);
         setDbSectors(sectorsData);
         setDbUsinas(usinasData);
       } catch (error) {
-        console.error("Erro ao processar dados do dashboard:", error);
+        console.error("Erro ao carregar dados:", error);
       }
     };
-    loadDashboardData();
-  }, []);
+    if (user) loadDashboardData();
+  }, [user, api]);
 
   // --- Estados dos Filtros ---
-  const [selectedSector, setSelectedSector] = useState<string>(isSupervisor && user?.sectorId ? user.sectorId.toString() : 'all');
+  const [selectedSector, setSelectedSector] = useState<string>('all');
   const [selectedUsina, setSelectedUsina] = useState<string>('all');
   const [selectedUser, setSelectedUser] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [periodPreset, setPeriodPreset] = useState<string>('all');
   const [date, setDate] = useState<DateRange | undefined>();
 
-  // --- Lógica do Gráfico de Produção (Igual à página de Relatórios) ---
+  // --- Lógica do Gráfico de Produção ---
   const chartData = useMemo(() => {
     const days = eachDayOfInterval({
       start: startOfMonth(new Date()),
@@ -83,7 +88,6 @@ const AdminOverview: React.FC = () => {
     return days.map(day => {
       const count = dbClients.filter(c => {
         if (!c.createdAt) return false;
-        // Substitui o espaço por 'T' para o formato ISO ser aceito em todos os navegadores
         const cDate = new Date(c.createdAt.replace(' ', 'T'));
         return format(cDate, 'yyyy-MM-dd') === format(day, 'yyyy-MM-dd');
       }).length;
@@ -108,7 +112,7 @@ const AdminOverview: React.FC = () => {
   };
 
   const clearFilters = () => {
-    if (!isSupervisor) setSelectedSector('all');
+    setSelectedSector('all');
     setSelectedUsina('all');
     setSelectedUser('all');
     setSelectedStatus('all');
@@ -116,26 +120,21 @@ const AdminOverview: React.FC = () => {
     setDate(undefined);
   };
 
-  // --- Lógica de Filtragem ---
+  // --- LÓGICA DE FILTRAGEM CORRIGIDA PARA MÚLTIPLOS SETORES ---
   const filteredData = useMemo(() => {
-    const filtered = dbClients.filter(client => {
-      // 1. Normalização rigorosa para string (evita falha number vs string)
-      const clientSectorId = client.sectorId?.toString();
-      const userSectorId = user?.sectorId?.toString();
-      const clientUsinaId = client.usinaId?.toString();
-      const clientUserId = client.userId?.toString();
+    const supervisorSectors = user?.sectorId ? user.sectorId.split(',') : [];
 
-      // 2. Lógica de Filtro de Setor
-      const matchSector = isSupervisor
-        ? clientSectorId === userSectorId
-        : (selectedSector === 'all' || clientSectorId === selectedSector);
+    return dbClients.filter(client => {
+      const clientSectorId = client.sectorId?.toString() || '';
+      
+      // AJUSTE: Se for supervisor, permite ver apenas clientes dos seus vários setores
+      if (isSupervisor && !supervisorSectors.includes(clientSectorId)) return false;
 
-      // 3. Filtros Adicionais
-      const matchUsina = selectedUsina === 'all' || clientUsinaId === selectedUsina;
-      const matchUser = selectedUser === 'all' || clientUserId === selectedUser;
+      const matchSector = selectedSector === 'all' || clientSectorId === selectedSector;
+      const matchUsina = selectedUsina === 'all' || client.usinaId?.toString() === selectedUsina;
+      const matchUser = selectedUser === 'all' || client.userId?.toString() === selectedUser;
       const matchStatus = selectedStatus === 'all' || client.status === selectedStatus;
 
-      // 4. Filtro de Data
       let matchDate = true;
       if (date?.from && client.createdAt) {
         const clientDate = new Date(client.createdAt.replace(' ', 'T'));
@@ -148,16 +147,26 @@ const AdminOverview: React.FC = () => {
 
       return matchSector && matchUsina && matchUser && matchStatus && matchDate;
     });
-
-    console.log("Dados Filtrados Resultantes:", filtered.length); // Log para depuração
-    return filtered;
   }, [dbClients, selectedSector, selectedUsina, selectedUser, selectedStatus, date, isSupervisor, user]);
 
   const availableConsultants = useMemo(() => {
-    if (isSupervisor) return dbUsers.filter(u => u.sectorId?.toString() === user?.sectorId?.toString());
-    if (selectedSector === 'all') return dbUsers.filter(u => u.role === 'user');
-    return dbUsers.filter(u => u.sectorId?.toString() === selectedSector);
+    const supervisorSectors = user?.sectorId ? user.sectorId.split(',') : [];
+    
+    return dbUsers.filter(u => {
+      const uSector = u.sectorId?.toString() || '';
+      const isEligibleRole = u.role === 'user' || u.role === 'supervisor'; // INCLUI SUPERVISOR NO FILTRO
+      
+      if (isSupervisor) return isEligibleRole && supervisorSectors.includes(uSector);
+      if (selectedSector !== 'all') return isEligibleRole && uSector === selectedSector;
+      return isEligibleRole;
+    });
   }, [dbUsers, selectedSector, isSupervisor, user]);
+
+  const availableSectorsForFilter = useMemo(() => {
+    const supervisorSectors = user?.sectorId ? user.sectorId.split(',') : [];
+    if (isSupervisor) return dbSectors.filter(s => supervisorSectors.includes(s.id.toString()));
+    return dbSectors;
+  }, [dbSectors, isSupervisor, user]);
 
   // --- Métricas Gerais ---
   const total = filteredData.length;
@@ -196,17 +205,15 @@ const AdminOverview: React.FC = () => {
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:flex lg:flex-1 gap-3 w-full">
-                {!isSupervisor && (
-                  <div className="w-full lg:flex-1">
-                    <Select value={selectedSector} onValueChange={(v) => { setSelectedSector(v); setSelectedUser('all'); }}>
-                      <SelectTrigger className="bg-background h-10 w-full"><SelectValue placeholder="Setor" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos Setores</SelectItem>
-                        {dbSectors.map((s) => (<SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                <div className="w-full lg:flex-1">
+                  <Select value={selectedSector} onValueChange={(v) => { setSelectedSector(v); setSelectedUser('all'); }}>
+                    <SelectTrigger className="bg-background h-10 w-full"><SelectValue placeholder="Setor" /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos Setores</SelectItem>
+                      {availableSectorsForFilter.map((s) => (<SelectItem key={s.id} value={s.id.toString()}>{s.name}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 <div className="w-full lg:flex-1">
                   <Select value={selectedUsina} onValueChange={setSelectedUsina}>
@@ -218,17 +225,15 @@ const AdminOverview: React.FC = () => {
                   </Select>
                 </div>
 
-                {(selectedSector !== 'all' || isSupervisor) && (
-                  <div className="w-full lg:flex-1 animate-in fade-in zoom-in duration-200">
-                    <Select value={selectedUser} onValueChange={setSelectedUser}>
-                      <SelectTrigger className="bg-background h-10 w-full"><SelectValue placeholder="Consultor" /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="all">Todos Consultores</SelectItem>
-                        {availableConsultants.map((u) => (<SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+                <div className="w-full lg:flex-1 animate-in fade-in zoom-in duration-200">
+                  <Select value={selectedUser} onValueChange={setSelectedUser}>
+                    <SelectTrigger className="bg-background h-10 w-full"><SelectValue placeholder="Consultor/Sup." /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todos Consultores</SelectItem>
+                      {availableConsultants.map((u) => (<SelectItem key={u.id} value={u.id.toString()}>{u.name}</SelectItem>))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
                 <div className="w-full lg:flex-1">
                   <Select value={selectedStatus} onValueChange={setSelectedStatus}>
@@ -374,7 +379,7 @@ const AdminOverview: React.FC = () => {
           <Card className="flex flex-col h-full shadow-sm">
             <CardHeader>
               <CardTitle>Produtividade</CardTitle>
-              <CardDescription>Produção total por consultor</CardDescription>
+              <CardDescription>Produção total por consultor e supervisor</CardDescription>
             </CardHeader>
             <CardContent className="flex-1 overflow-auto max-h-[450px]">
               <div className="space-y-4">
