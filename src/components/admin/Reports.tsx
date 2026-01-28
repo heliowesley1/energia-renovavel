@@ -73,25 +73,33 @@ const Reports: React.FC = () => {
 
   // Carregamento de dados reais do Banco de Dados (XAMPP)
   useEffect(() => {
-    const loadReportsData = async () => {
-      try {
-        const [c, u, s, us] = await Promise.all([
-          api.get("clientes.php"),
-          api.get("usuarios.php"),
-          api.get("setores.php"),
-          api.get("usinas.php"),
-        ]);
-        setDbClients(c || []);
-        setDbUsers(u || []);
-        setDbSectors(s || []);
-        setDbUsinas(us || []);
-      } catch (error) {
-        console.error("Erro ao carregar dados do banco:", error);
-      }
-    };
-    loadReportsData();
-  }, []);
+  const loadReportsData = async () => {
+    try {
+      const [resClients, resUsers, resSectors, resUsinas] = await Promise.all([
+        api.get("clientes.php"),
+        api.get("usuarios.php"),
+        api.get("setores.php"),
+        api.get("usinas.php"),
+      ]);
 
+      // Esta verificação é essencial: tenta pegar .data ou assume o array
+      const clientsData = Array.isArray(resClients) ? resClients : (resClients?.data || []);
+      const usersData = Array.isArray(resUsers) ? resUsers : (resUsers?.data || []);
+      const sectorsData = Array.isArray(resSectors) ? resSectors : (resSectors?.data || []);
+      const usinasData = Array.isArray(resUsinas) ? resUsinas : (resUsinas?.data || []);
+
+      setDbClients(clientsData);
+      setDbUsers(usersData);
+      setDbSectors(sectorsData);
+      setDbUsinas(usinasData);
+      
+      console.log("Dados carregados:", clientsData.length, "clientes"); // Verifique isto no console (F12)
+    } catch (error) {
+      console.error("Erro ao carregar dados do banco:", error);
+    }
+  };
+  loadReportsData();
+}, []);
   // --- ESTADOS DOS FILTROS ---
   const [selectedSector, setSelectedSector] = useState<string>(
     isSupervisor && user?.sectorId ? user.sectorId : "all",
@@ -158,40 +166,41 @@ const Reports: React.FC = () => {
 
   // --- LÓGICA DE FILTRAGEM ---
   const filteredData = useMemo(() => {
-  const data = dbClients.filter((client) => {
-    // Adicionado .toString() para evitar erro de comparação número vs string
-    const matchSector = isSupervisor
-      ? client.sectorId?.toString() === user?.sectorId?.toString()
-      : selectedSector === "all" || client.sectorId?.toString() === selectedSector;
+    const data = dbClients.filter((client) => {
+      const clientSectorId = client.sectorId?.toString();
+      const userSectorId = user?.sectorId?.toString();
+      const clientUserId = client.userId?.toString();
 
-    const matchUser =
-      selectedUser === "all" || client.userId?.toString() === selectedUser;
-    const matchStatus =
-      selectedStatus === "all" || client.status === selectedStatus;
+      const matchSector = isSupervisor
+        ? clientSectorId === userSectorId
+        : selectedSector === "all" || clientSectorId === selectedSector;
 
-    let matchDate = true;
-    if (date?.from) {
-      const clientDate = new Date(client.createdAt);
-      const fromDate = new Date(date.from);
-      fromDate.setHours(0, 0, 0, 0);
+      const matchUser = selectedUser === "all" || clientUserId === selectedUser;
+      const matchStatus = selectedStatus === "all" || client.status === selectedStatus;
 
-      if (date.to) {
-        const toDate = new Date(date.to);
-        toDate.setHours(23, 59, 59, 999);
-        matchDate = clientDate >= fromDate && clientDate <= toDate;
-      } else {
-        matchDate = clientDate >= fromDate;
+      let matchDate = true;
+      if (date?.from && client.createdAt) {
+        const clientDate = new Date(client.createdAt.replace(' ', 'T'));
+        const fromDate = new Date(date.from);
+        fromDate.setHours(0, 0, 0, 0);
+
+        if (date.to) {
+          const toDate = new Date(date.to);
+          toDate.setHours(23, 59, 59, 999);
+          matchDate = clientDate >= fromDate && clientDate <= toDate;
+        } else {
+          matchDate = clientDate >= fromDate;
+        }
       }
-    }
 
-    return matchSector && matchUser && matchStatus && matchDate;
-  });
+      return matchSector && matchUser && matchStatus && matchDate;
+    });
 
-  return data.sort(
-    (a, b) =>
-      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
-  );
-}, [dbClients, selectedSector, selectedUser, selectedStatus, date, isSupervisor, user]);
+    // Retorna os dados ordenados do mais recente para o mais antigo
+    return data.sort(
+      (a, b) => new Date(b.createdAt.replace(' ', 'T')).getTime() - new Date(a.createdAt.replace(' ', 'T')).getTime()
+    );
+  }, [dbClients, selectedSector, selectedUser, selectedStatus, date, isSupervisor, user]);
 
   const availableConsultants = useMemo(() => {
     if (isSupervisor) {

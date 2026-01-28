@@ -51,6 +51,9 @@ const AdminOverview: React.FC = () => {
         const usersData = Array.isArray(resUsers) ? resUsers : (resUsers?.data || []);
         const sectorsData = Array.isArray(resSectors) ? resSectors : (resSectors?.data || []);
         const usinasData = Array.isArray(resUsinas) ? resUsinas : (resUsinas?.data || []);
+        
+        console.log("API Clientes Raw:", clientsData); // Log para depuração
+        
         setDbClients(clientsData);
         setDbUsers(usersData);
         setDbSectors(sectorsData);
@@ -115,34 +118,41 @@ const AdminOverview: React.FC = () => {
 
   // --- Lógica de Filtragem ---
   const filteredData = useMemo(() => {
-  return dbClients.filter(client => {
-    // 1. Filtro de Setor (forçando string e tratando nulos)
-    const clientSectorId = client.sectorId?.toString();
-    const userSectorId = user?.sectorId?.toString();
-    
-    const matchSector = isSupervisor 
-      ? clientSectorId === userSectorId 
-      : (selectedSector === 'all' || clientSectorId === selectedSector);
-    
-    // 2. Outros filtros (Usina e Usuário)
-    const matchUsina = selectedUsina === 'all' || client.usinaId?.toString() === selectedUsina;
-    const matchUser = selectedUser === 'all' || client.userId?.toString() === selectedUser;
-    const matchStatus = selectedStatus === 'all' || client.status === selectedStatus;
-    
-    // 3. Filtro de Data (Verifique se 'periodPreset' está em 'all')
-    let matchDate = true;
-    if (date?.from) {
-      const clientDate = new Date(client.createdAt?.replace(' ', 'T')); // Correção para formato MySQL
-      if (date.to) {
-        matchDate = clientDate >= startOfDay(date.from) && clientDate <= endOfDay(date.to);
-      } else {
-        matchDate = clientDate >= startOfDay(date.from);
+    const filtered = dbClients.filter(client => {
+      // 1. Normalização rigorosa para string (evita falha number vs string)
+      const clientSectorId = client.sectorId?.toString();
+      const userSectorId = user?.sectorId?.toString();
+      const clientUsinaId = client.usinaId?.toString();
+      const clientUserId = client.userId?.toString();
+
+      // 2. Lógica de Filtro de Setor
+      const matchSector = isSupervisor
+        ? clientSectorId === userSectorId
+        : (selectedSector === 'all' || clientSectorId === selectedSector);
+
+      // 3. Filtros Adicionais
+      const matchUsina = selectedUsina === 'all' || clientUsinaId === selectedUsina;
+      const matchUser = selectedUser === 'all' || clientUserId === selectedUser;
+      const matchStatus = selectedStatus === 'all' || client.status === selectedStatus;
+
+      // 4. Filtro de Data
+      let matchDate = true;
+      if (date?.from && client.createdAt) {
+        const clientDate = new Date(client.createdAt.replace(' ', 'T'));
+        if (date.to) {
+          matchDate = clientDate >= startOfDay(date.from) && clientDate <= endOfDay(date.to);
+        } else {
+          matchDate = clientDate >= startOfDay(date.from);
+        }
       }
-    }
-    
-    return matchSector && matchUsina && matchUser && matchStatus && matchDate;
-  });
-}, [dbClients, selectedSector, selectedUsina, selectedUser, selectedStatus, date, isSupervisor, user]);
+
+      return matchSector && matchUsina && matchUser && matchStatus && matchDate;
+    });
+
+    console.log("Dados Filtrados Resultantes:", filtered.length); // Log para depuração
+    return filtered;
+  }, [dbClients, selectedSector, selectedUsina, selectedUser, selectedStatus, date, isSupervisor, user]);
+
   const availableConsultants = useMemo(() => {
     if (isSupervisor) return dbUsers.filter(u => u.sectorId?.toString() === user?.sectorId?.toString());
     if (selectedSector === 'all') return dbUsers.filter(u => u.role === 'user');
@@ -159,7 +169,7 @@ const AdminOverview: React.FC = () => {
   const waitingPerc = total > 0 ? (waiting / total) * 100 : 0;
   const pendingPerc = total > 0 ? (pending / total) * 100 : 0;
 
-  const activeConsultantIds = Array.from(new Set(filteredData.map(c => c.userId)));
+  const activeConsultantIds = Array.from(new Set(filteredData.map(c => c.userId?.toString()).filter(Boolean)));
 
   return (
     <DashboardLayout>
@@ -177,7 +187,7 @@ const AdminOverview: React.FC = () => {
           </div>
         </div>
 
-        {/* --- BARRA DE FILTROS IGUAL AOS RELATÓRIOS --- */}
+        {/* --- BARRA DE FILTROS --- */}
         <Card className="bg-muted/40 border-muted-foreground/20 shadow-sm w-full">
           <CardContent className="p-4">
             <div className="flex flex-col lg:flex-row items-center gap-4">
@@ -245,7 +255,6 @@ const AdminOverview: React.FC = () => {
                   </Select>
                 </div>
 
-                {/* --- CAMPOS DE DATA PERSONALIZADA (ESTILO RELATÓRIOS) --- */}
                 {periodPreset === 'custom' && (
                   <div className="flex items-center gap-2 animate-in fade-in slide-in-from-left-2 duration-300">
                     <Input
@@ -346,7 +355,7 @@ const AdminOverview: React.FC = () => {
                     <div className="flex flex-col gap-1 min-w-0">
                       <span className="font-medium text-sm truncate">{client.name}</span>
                       <span className="text-[10px] text-muted-foreground uppercase font-bold">
-                        {dbUsers.find(u => u.id.toString() === client.userId.toString())?.name || 'N/A'} • {format(new Date(client.createdAt), "dd/MM/yyyy")}
+                        {dbUsers.find(u => u.id.toString() === client.userId?.toString())?.name || 'N/A'} • {client.createdAt ? format(new Date(client.createdAt.replace(' ', 'T')), "dd/MM/yyyy") : 'N/A'}
                       </span>
                     </div>
                     <div className={cn("px-2 py-1 rounded text-[10px] font-bold uppercase border",
@@ -362,7 +371,6 @@ const AdminOverview: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* CARD RENOMEADO PARA PRODUTIVIDADE */}
           <Card className="flex flex-col h-full shadow-sm">
             <CardHeader>
               <CardTitle>Produtividade</CardTitle>
@@ -373,8 +381,8 @@ const AdminOverview: React.FC = () => {
                 {activeConsultantIds.map(userId => {
                   const uData = dbUsers.find(u => u.id.toString() === userId.toString());
                   if (!uData) return null;
-                  const count = filteredData.filter(c => c.userId.toString() === userId.toString()).length;
-                  const userFormalized = filteredData.filter(c => c.userId.toString() === userId.toString() && c.status === 'formalized').length;
+                  const count = filteredData.filter(c => c.userId?.toString() === userId.toString()).length;
+                  const userFormalized = filteredData.filter(c => c.userId?.toString() === userId.toString() && c.status === 'formalized').length;
                   return (
                     <div key={userId} className="flex items-center gap-3">
                       <Avatar className="h-8 w-8"><AvatarFallback className="text-xs bg-primary/10 text-primary font-bold">{uData.name.substring(0, 2).toUpperCase()}</AvatarFallback></Avatar>
@@ -394,7 +402,7 @@ const AdminOverview: React.FC = () => {
           </Card>
         </div>
 
-        {/* --- CARD DE PRODUÇÃO MENSAL (POSICIONADO NO FINAL COMO SOLICITADO) --- */}
+        {/* --- CARD DE PRODUÇÃO MENSAL --- */}
         <Card className="shadow-sm">
           <CardHeader>
             <CardTitle className="flex items-center gap-2"><TrendingUp className="w-5 h-5 text-primary" /> Produção Mensal</CardTitle>
