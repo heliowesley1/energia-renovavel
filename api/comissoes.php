@@ -1,13 +1,20 @@
 <?php
 // api/comissoes.php
+
+// 1. Cabeçalhos de Permissão
+header("Access-Control-Allow-Origin: http://localhost"); 
+header("Access-Control-Allow-Methods: GET, POST, OPTIONS, PUT, DELETE");
+header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
+header("Access-Control-Allow-Credentials: true");
+
+// 2. Resposta obrigatória para a verificação do navegador (Preflight)
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
+    http_response_code(200);
+    exit;
+}
+
 require_once 'config.php';
-
-header("Access-Control-Allow-Origin: *");
-header("Access-Control-Allow-Methods: GET, OPTIONS");
-header("Access-Control-Allow-Headers: Content-Type, Authorization");
 header("Content-Type: application/json; charset=UTF-8");
-
-if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') { exit; }
 
 try {
     $startDate = $_GET['start_date'] ?? null;

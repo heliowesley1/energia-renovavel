@@ -331,7 +331,7 @@ const Reports: React.FC = () => {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
             <h1 className="text-3xl font-display font-bold text-foreground">
-              Relatórios {isSupervisor ? ` - Gestão Regional` : "Gerenciais"}
+              Relatórios {isSupervisor ? ` - Equipe` : "Gerenciais"}
             </h1>
             <p className="text-muted-foreground mt-1">Extração e análise detalhada de dados por consultor e supervisor</p>
           </div>

@@ -22,6 +22,7 @@ const Comissao = () => {
 
   const [selectedSector, setSelectedSector] = useState<string>("all");
   const [selectedUser, setSelectedUser] = useState<string>("all");
+  const [selectedUsina, setSelectedUsina] = useState<string>("all");
   const [searchName, setSearchName] = useState("");
   const [periodPreset, setPeriodPreset] = useState<string>("all");
   const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>({});
@@ -65,6 +66,7 @@ const Comissao = () => {
   const clearFilters = () => {
     setSelectedSector("all");
     setSelectedUser("all");
+    setSelectedUsina("all");
     setSearchName("");
     setPeriodPreset("all");
     setDateRange({});
@@ -75,12 +77,36 @@ const Comissao = () => {
       const matchSector = selectedSector === "all" || item.setor === selectedSector;
       const matchUser = selectedUser === "all" || item.userId === selectedUser;
       const matchSearch = (item.consultor || "").toLowerCase().includes(searchName.toLowerCase());
-      return matchSector && matchUser && matchSearch;
+      const matchUsina = selectedUsina === "all" || (item.detalhes_usinas && item.detalhes_usinas[selectedUsina]);
+      return matchSector && matchUser && matchSearch && matchUsina;
     });
-  }, [dados, selectedSector, selectedUser, searchName]);
+  }, [dados, selectedSector, selectedUser, searchName, selectedUsina]);
 
-  const totalComissaoGeral = useMemo(() => dadosFiltrados.reduce((acc, curr) => acc + (curr.total_comissao || 0), 0), [dadosFiltrados]);
-  const consultorDestaque = useMemo(() => [...dadosFiltrados].sort((a, b) => b.contratos - a.contratos)[0], [dadosFiltrados]);
+  const totalComissaoGeral = useMemo(() => {
+    return dadosFiltrados.reduce((acc, curr) => {
+      if (selectedUsina === "all") {
+        return acc + (curr.total_comissao || 0);
+      }
+      // Se houver uma usina selecionada, soma apenas o valor dela
+      const valorUsina = curr.detalhes_usinas?.[selectedUsina]?.valor || 0;
+      return acc + valorUsina;
+    }, 0);
+  }, [dadosFiltrados, selectedUsina]);
+  const consultorDestaque = useMemo(() => {
+  if (dadosFiltrados.length === 0) return null;
+
+  return [...dadosFiltrados].sort((a, b) => {
+    const qtdA = selectedUsina === "all"
+      ? (a.contratos || 0)
+      : (a.detalhes_usinas?.[selectedUsina]?.qtd || 0);
+
+    const qtdB = selectedUsina === "all"
+      ? (b.contratos || 0)
+      : (b.detalhes_usinas?.[selectedUsina]?.qtd || 0);
+
+    return qtdB - qtdA;
+  })[0];
+}, [dadosFiltrados, selectedUsina]);
 
   const handleExportExcel = () => {
     if (dadosFiltrados.length === 0) return;
@@ -200,6 +226,17 @@ const Comissao = () => {
                     <SelectItem value="all">Todos Setores</SelectItem>
                     {setores.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
                   </SelectContent>
+                  <Select value={selectedUsina} onValueChange={setSelectedUsina}>
+                    <SelectTrigger className="h-9 text-xs bg-background w-full sm:w-[160px]">
+                      <SelectValue placeholder="Usina" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as Usinas</SelectItem>
+                      {usinas.map(u => (
+                        <SelectItem key={u.id} value={u.name}>{u.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </Select>
                 {selectedSector !== "all" && (
                   <Select value={selectedUser} onValueChange={setSelectedUser}>
@@ -250,29 +287,38 @@ const Comissao = () => {
               <Trophy className="w-4 h-4 text-amber-500" />
             </CardHeader>
             <CardContent>
-              <div className="text-lg font-bold text-black truncate">{consultorDestaque?.consultor || "---"}</div>
-              <p className="text-xs text-muted-foreground">{consultorDestaque?.contratos || 0} contratos</p>
-            </CardContent>
+  <div className="text-lg font-bold text-black truncate">{consultorDestaque?.consultor || "---"}</div>
+  <p className="text-xs text-muted-foreground">
+    {/* AJUSTE AQUI: Verifica se há filtro de usina para exibir a contagem correta */}
+    {selectedUsina === "all" 
+      ? (consultorDestaque?.contratos || 0) 
+      : (consultorDestaque?.detalhes_usinas?.[selectedUsina]?.qtd || 0)} contratos
+  </p>
+</CardContent>
           </Card>
 
           <Card className="md:col-span-2 shadow-sm flex flex-col min-h-[110px]">
-            <CardHeader className="py-2 bg-muted/20 border-b"><CardTitle className="text-xs font-bold uppercase text-black flex items-center gap-2"><BarChart3 className="w-3 h-3" /> Média por Usina</CardTitle></CardHeader>
+            <CardHeader className="py-2 bg-muted/20 border-b">
+              <CardTitle className="text-xs font-bold uppercase text-black flex items-center gap-2">
+                <BarChart3 className="w-3 h-3" /> Contratos por Usina
+              </CardTitle>
+            </CardHeader>
             <CardContent className="p-3 flex-1">
               <div className="flex flex-wrap gap-2 justify-start items-center">
-                {(() => {
-                  // Soma total de contratos de todas as usinas
-                  const totalContratos = usinas.reduce((acc, u) => acc + dadosFiltrados.reduce((a, curr) => a + (curr.detalhes_usinas?.[u.name]?.qtd || 0), 0), 0);
-                  return usinas.map(u => {
-                    const totalU = dadosFiltrados.reduce((acc, curr) => acc + (curr.detalhes_usinas?.[u.name]?.qtd || 0), 0);
-                    const percent = totalContratos > 0 ? Math.round((totalU / totalContratos) * 100) : 0;
+                {usinas
+                  .filter(u => selectedUsina === "all" || u.name === selectedUsina) // Filtra a lista de usinas exibida
+                  .map(u => {
+                    const totalU = dadosFiltrados.reduce((acc, curr) =>
+                      acc + (curr.detalhes_usinas?.[u.name]?.qtd || 0), 0
+                    );
                     return (
                       <div key={u.id} className="flex-1 min-w-[100px] text-center p-2 border rounded bg-white flex flex-col justify-center shadow-sm">
                         <p className="text-[9px] uppercase font-bold text-black truncate">{u.name}</p>
-                        <p className="text-lg font-bold text-black">{percent}%</p>
+                        <p className="text-lg font-bold text-black">{totalU}</p>
+                        <p className="text-[8px] text-muted-foreground uppercase">Contratos</p>
                       </div>
                     );
-                  });
-                })()}
+                  })}
               </div>
             </CardContent>
           </Card>
@@ -297,24 +343,53 @@ const Comissao = () => {
                   {loading ? (
                     <TableRow><TableCell colSpan={usinas.length + 4} className="h-24 text-center"><Loader2 className="animate-spin inline mr-2" /> Carregando...</TableCell></TableRow>
                   ) : dadosFiltrados.length === 0 ? (
-                    <TableRow><TableCell colSpan={usinas.length + 4} className="h-24 text-center text-muted-foreground">Nenhum contrato formalizado encontrado.</TableCell></TableRow>
-                  ) : dadosFiltrados.map((item, idx) => (
-                    <TableRow key={idx} className="hover:bg-muted/30 transition-colors border-b">
-                      <TableCell className="text-black text-center">{item.setor || '---'}</TableCell>
-                      <TableCell className="font-bold text-black text-center">{item.consultor}</TableCell>
-                      {usinas.map(u => {
-                        const info = item.detalhes_usinas?.[u.name] || { qtd: 0, valor: 0 };
-                        return (
-                          <TableCell key={u.id} className="text-center border-x border-muted">
-                            <div className="font-bold text-black text-center">{info.qtd}</div>
-                            <div className="text-[10px] text-muted-foreground text-center">R$ {(info.valor || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+                    <TableRow><TableCell colSpan={usinas.length + 4} className="h-24 text-center text-muted-foreground">Nenhum contrato encontrado.</TableCell></TableRow>
+                  ) : (
+                    dadosFiltrados.map((item, idx) => {
+                      const isUsinaFilterActive = selectedUsina !== "all";
+
+                      // Define o que aparece nas colunas finais de resumo
+                      const totalContratosLinha = isUsinaFilterActive
+                        ? (item.detalhes_usinas?.[selectedUsina]?.qtd || 0)
+                        : (item.contratos || 0);
+
+                      const totalComissaoLinha = isUsinaFilterActive
+                        ? (item.detalhes_usinas?.[selectedUsina]?.valor || 0)
+                        : (item.total_comissao || 0);
+
+                      return (
+                        <TableRow key={idx} className="hover:bg-muted/30 transition-colors border-b">
+                          <TableCell className="text-black text-center">{item.setor || '---'}</TableCell>
+                          <TableCell className="font-bold text-black text-center">{item.consultor}</TableCell>
+
+                          {/* Mapeia todas as usinas para manter o alinhamento com o cabeçalho */}
+                          {usinas.map(u => {
+                            // Se houver filtro e esta não for a usina filtrada, exibe vazio ou 0
+                            const mostrarDados = !isUsinaFilterActive || u.name === selectedUsina;
+                            const info = mostrarDados ? (item.detalhes_usinas?.[u.name] || { qtd: 0, valor: 0 }) : { qtd: 0, valor: 0 };
+
+                            return (
+                              <TableCell key={u.id} className="text-center border-x border-muted">
+                                <div className={`font-bold text-center ${!mostrarDados ? 'opacity-20' : 'text-black'}`}>
+                                  {info.qtd}
+                                </div>
+                                <div className={`text-[10px] text-center ${!mostrarDados ? 'opacity-20' : 'text-muted-foreground'}`}>
+                                  R$ {info.valor.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                                </div>
+                              </TableCell>
+                            );
+                          })}
+
+                          <TableCell className="text-center font-bold text-black bg-amber-50/10">
+                            {totalContratosLinha}
                           </TableCell>
-                        );
-                      })}
-                      <TableCell className="text-center font-bold text-black bg-amber-50/10">{item.contratos}</TableCell>
-                      <TableCell className="text-center font-bold text-emerald-700 bg-emerald-50/30">R$ {(item.total_comissao || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</TableCell>
-                    </TableRow>
-                  ))}
+                          <TableCell className="text-center font-bold text-emerald-700 bg-emerald-50/30">
+                            R$ {totalComissaoLinha.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </TableCell>
+                        </TableRow>
+                      );
+                    })
+                  )}
                 </TableBody>
               </Table>
             </div>

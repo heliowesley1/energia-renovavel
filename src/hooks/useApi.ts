@@ -1,4 +1,4 @@
-const API_URL = "http://localhost/energia_renovavel/api";
+const API_URL = "https://energiarenovavel.credinowe.com.br/api";
 
 export const useApi = () => {
   const fetchApi = async (endpoint: string, options?: RequestInit) => {
@@ -8,6 +8,7 @@ export const useApi = () => {
     try {
       const response = await fetch(url, {
         ...options,
+        mode: 'cors', // Força o navegador a tratar a requisição como Cross-Origin
         headers: { 
           'Content-Type': 'application/json', 
           ...options?.headers 
@@ -17,13 +18,11 @@ export const useApi = () => {
       const data = await response.json();
       
       if (!response.ok) {
-        // Propaga o erro para o catch do componente que chamou a API
         throw new Error(data.error || data.message || 'Erro na requisição');
       }
       return data;
     } catch (error) {
       console.error("Erro na API:", error);
-      // Lança o erro novamente para ser capturado pelo try-catch do componente
       throw error; 
     }
   };

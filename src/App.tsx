@@ -25,7 +25,7 @@ const App = () => (
     {/* O basename deve ser "/" se estiver na raiz do domínio ou o nome da pasta 
       caso esteja em um subdiretório no Apache/XAMPP (ex: "/sistema")
     */}
-    <BrowserRouter basename="/energia_renovavel/">
+    <BrowserRouter basename="/">
       <Routes>
         {/* Rotas Públicas */}
         <Route path="/" element={<Login />} />
