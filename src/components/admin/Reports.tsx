@@ -3,55 +3,22 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useApi } from "@/hooks/useApi";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
+  Card, CardContent, CardHeader, CardTitle, CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
+  Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import {
-  FileSpreadsheet,
-  PieChart as PieChartIcon,
-  Building2,
-  Filter,
-  Eraser,
-  Calendar as CalendarIcon,
-  ChevronLeft,
-  ChevronRight,
-  List,
-  Trophy,
-  Medal,
-  Activity,
-  Target,
-  Users as UsersIcon,
-  Map,
+  FileSpreadsheet, PieChart as PieChartIcon, Building2, Filter, Eraser, Calendar as CalendarIcon, ChevronLeft, ChevronRight, List, Trophy, Medal, Activity, Target, Users as UsersIcon, Map,
 } from "lucide-react";
 import {
-  Pagination,
-  PaginationContent,
-  PaginationEllipsis,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
+  Pagination, PaginationContent, PaginationEllipsis, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious,
 } from "@/components/ui/pagination";
 import { useToast } from "@/hooks/use-toast";
 import { format, subDays, startOfMonth, endOfMonth, isSameDay, startOfDay, endOfDay } from "date-fns";
@@ -71,14 +38,32 @@ const Reports: React.FC = () => {
   const [dbSectors, setDbSectors] = useState<any[]>([]);
   const [dbUsinas, setDbUsinas] = useState<any[]>([]);
 
-  // Carregamento de dados reais do Banco de Dados (XAMPP) com parâmetros de contexto
+  // --- ESTADOS DOS FILTROS ---
+  // OTIMIZAÇÃO: Inicia filtrando pelo mês atual para não travar o banco
+  const [periodPreset, setPeriodPreset] = useState<string>("month");
+  const [date, setDate] = useState<DateRange | undefined>({
+    from: startOfMonth(new Date()),
+    to: endOfMonth(new Date())
+  });
+
+  const [selectedSector, setSelectedSector] = useState<string>("all");
+  const [selectedUser, setSelectedUser] = useState<string>("all");
+  const [selectedStatus, setSelectedStatus] = useState<string>("all");
+
+  // --- ESTADO DE PAGINAÇÃO ---
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 10;
+
+  // Carregamento de dados reais do Banco de Dados
   useEffect(() => {
     const loadReportsData = async () => {
       try {
         const queryParams = new URLSearchParams({
           role: user?.role || '',
           userId: user?.id || '',
-          sectors: user?.sectorId || '' 
+          sectors: user?.sectorId || '',
+          start_date: date?.from ? format(date.from, 'yyyy-MM-dd') : '',
+          end_date: date?.to ? format(date.to, 'yyyy-MM-dd') : ''
         }).toString();
 
         const [resClients, resUsers, resSectors, resUsinas] = await Promise.all([
@@ -102,18 +87,7 @@ const Reports: React.FC = () => {
       }
     };
     if (user) loadReportsData();
-  }, [user, api]);
-
-  // --- ESTADOS DOS FILTROS ---
-  const [selectedSector, setSelectedSector] = useState<string>("all");
-  const [selectedUser, setSelectedUser] = useState<string>("all");
-  const [selectedStatus, setSelectedStatus] = useState<string>("all");
-  const [periodPreset, setPeriodPreset] = useState<string>("all");
-  const [date, setDate] = useState<DateRange | undefined>();
-
-  // --- ESTADO DE PAGINAÇÃO ---
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 10;
+  }, [user, api, date]); // Agora api é estável
 
   // --- HANDLERS DOS FILTROS ---
   const handlePeriodPresetChange = (value: string) => {
@@ -155,8 +129,8 @@ const Reports: React.FC = () => {
     setSelectedSector("all");
     setSelectedUser("all");
     setSelectedStatus("all");
-    setPeriodPreset("all");
-    setDate(undefined);
+    setPeriodPreset("today");
+    setDate({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) });
   };
 
   // Resetar paginação ao filtrar
@@ -164,14 +138,13 @@ const Reports: React.FC = () => {
     setCurrentPage(1);
   }, [selectedSector, selectedUser, selectedStatus, periodPreset, date]);
 
-  // --- LÓGICA DE FILTRAGEM CORRIGIDA PARA MÚLTIPLOS SETORES ---
+  // --- LÓGICA DE FILTRAGEM LOCAL ---
   const filteredData = useMemo(() => {
     const supervisorSectors = user?.sectorId ? user.sectorId.split(',') : [];
 
     const data = dbClients.filter((client) => {
       const clientSectorId = client.sectorId?.toString() || '';
       
-      // AJUSTE: Se for supervisor, valida se o cliente pertence a qualquer um dos seus setores
       if (isSupervisor && !supervisorSectors.includes(clientSectorId)) return false;
 
       const matchSector = selectedSector === "all" || clientSectorId === selectedSector;
@@ -199,7 +172,7 @@ const Reports: React.FC = () => {
     
     return dbUsers.filter(u => {
       const uSector = u.sectorId?.toString() || '';
-      const isEligibleRole = u.role === "user" || u.role === "supervisor"; // INCLUI SUPERVISOR NO FILTRO
+      const isEligibleRole = u.role === "user" || u.role === "supervisor";
       
       if (isSupervisor) return isEligibleRole && supervisorSectors.includes(uSector);
       if (selectedSector !== "all") return isEligibleRole && uSector === selectedSector;

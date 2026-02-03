@@ -1,14 +1,16 @@
+import { useCallback, useMemo } from 'react';
+
 const API_URL = "https://energiarenovavel.credinowe.com.br/api";
 
 export const useApi = () => {
-  const fetchApi = async (endpoint: string, options?: RequestInit) => {
+  const fetchApi = useCallback(async (endpoint: string, options?: RequestInit) => {
     const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
     const url = `${API_URL}${cleanEndpoint}`;
     
     try {
       const response = await fetch(url, {
         ...options,
-        mode: 'cors', // Força o navegador a tratar a requisição como Cross-Origin
+        mode: 'cors',
         headers: { 
           'Content-Type': 'application/json', 
           ...options?.headers 
@@ -25,9 +27,11 @@ export const useApi = () => {
       console.error("Erro na API:", error);
       throw error; 
     }
-  };
+  }, []);
 
-  return {
+  // OTIMIZAÇÃO: useMemo impede que este objeto seja recriado a cada renderização
+  // Isso PARA o loop infinito no Dashboard e Relatórios
+  const apiMethods = useMemo(() => ({
     get: (endpoint: string) => fetchApi(endpoint, { method: 'GET' }),
     post: (endpoint: string, body: any) => fetchApi(endpoint, { 
       method: 'POST', 
@@ -38,5 +42,7 @@ export const useApi = () => {
       body: JSON.stringify(body) 
     }),
     delete: (endpoint: string) => fetchApi(endpoint, { method: 'DELETE' }),
-  };
+  }), [fetchApi]);
+
+  return apiMethods;
 };

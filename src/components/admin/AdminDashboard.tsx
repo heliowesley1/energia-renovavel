@@ -114,10 +114,10 @@ const AdminDashboard: React.FC = () => {
   // FIX: Função isPdf movida para o escopo correto para evitar o erro de ReferenceError
   const isPdf = (dataUrl: string) => dataUrl?.startsWith('data:application/pdf') || dataUrl?.endsWith('.pdf');
 
+  // OTIMIZAÇÃO: Busca apenas lista leve (sem imagens)
   const loadAllData = async () => {
     try {
       // AJUSTE: Enviando parâmetros de contexto para a API (Role e Múltiplos Setores)
-      // Isso resolve o problema dos relatórios zerados no Supervisor
       const queryParams = new URLSearchParams({
         role: user?.role || '',
         userId: user?.id || '',
@@ -142,6 +142,17 @@ const AdminDashboard: React.FC = () => {
   useEffect(() => {
     if (user) loadAllData();
   }, [user]); // Adicionado user como dependência para recarregar ao logar
+
+  // OTIMIZAÇÃO: Busca dados completos (com imagens) apenas sob demanda
+  const fetchFullClient = async (id: number) => {
+    try {
+      const fullData = await api.get(`/clientes.php?id=${id}`);
+      return fullData;
+    } catch (error) {
+      toast({ title: "Erro", description: "Não foi possível carregar os detalhes completos.", variant: "destructive" });
+      return null;
+    }
+  };
 
   const clearFilters = () => {
     setSearchTerm('');
@@ -220,24 +231,28 @@ const AdminDashboard: React.FC = () => {
     }
   };
 
-  const handleOpenForm = (client?: Client) => {
+  // OTIMIZAÇÃO: Busca dados completos antes de abrir o modal de edição
+  const handleOpenForm = async (client?: Client) => {
     if (client) {
-      setEditingClient(client);
+      const fullData = await fetchFullClient(client.id);
+      if (!fullData) return;
+
+      setEditingClient(fullData);
       setFormData({
-        name: client.name,
-        email: client.email || '',
-        cpf: client.cpf,
-        phone: client.phone || '',
-        sectorId: client.sectorId || '',
-        usinaId: (client as any).usinaId || '',
-        userId: client.userId || '',
-        observations: client.observations || '',
-        status: client.status,
-        createdAt: toInputDate(client.createdAt),
-        updatedAt: client.updatedAt || '',
-        imageUrl: client.imageUrl || '',
-        imageUrl2: (client as any).imageUrl2 || '',
-        imageUrl3: (client as any).imageUrl3 || '',
+        name: fullData.name,
+        email: fullData.email || '',
+        cpf: fullData.cpf,
+        phone: fullData.phone || '',
+        sectorId: fullData.sectorId || '',
+        usinaId: (fullData as any).usinaId || '',
+        userId: fullData.userId || '',
+        observations: fullData.observations || '',
+        status: fullData.status,
+        createdAt: toInputDate(fullData.createdAt),
+        updatedAt: fullData.updatedAt || '',
+        imageUrl: fullData.imageUrl || '',
+        imageUrl2: (fullData as any).imageUrl2 || '',
+        imageUrl3: (fullData as any).imageUrl3 || '',
       });
     } else {
       setEditingClient(null);
@@ -260,6 +275,14 @@ const AdminDashboard: React.FC = () => {
       });
     }
     setIsFormOpen(true);
+  };
+
+  // OTIMIZAÇÃO: Busca dados completos antes de ver detalhes
+  const handleViewDetails = async (client: Client) => {
+    const fullData = await fetchFullClient(client.id);
+    if (fullData) {
+      setViewingClientDetails(fullData);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -691,7 +714,7 @@ const AdminDashboard: React.FC = () => {
                       <TableCell>{getStatusBadge(client.status)}</TableCell>
                       <TableCell className="text-center">
                         <div className="flex items-center justify-center gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => setViewingClientDetails(client)} title="Ver Detalhes"><Eye className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => handleViewDetails(client)} title="Ver Detalhes"><Eye className="w-4 h-4" /></Button>
                           <Button variant="ghost" size="icon" onClick={() => handleOpenForm(client)} title="Editar" className="text-muted-foreground hover:text-amber-600"><Edit className="w-4 h-4" /></Button>
 
                           {isAdmin && (

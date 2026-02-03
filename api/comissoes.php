@@ -1,13 +1,12 @@
 <?php
 // api/comissoes.php
 
-// 1. Cabeçalhos de Permissão
-header("Access-Control-Allow-Origin: http://localhost"); 
+// 1. CORREÇÃO CRÍTICA DE CORS (Permite que o frontend acesse os dados)
+header("Access-Control-Allow-Origin: *");
 header("Access-Control-Allow-Methods: GET, POST, OPTIONS, PUT, DELETE");
 header("Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With");
-header("Access-Control-Allow-Credentials: true");
 
-// 2. Resposta obrigatória para a verificação do navegador (Preflight)
+// Resposta imediata para preflight (evita bloqueios do navegador)
 if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
     http_response_code(200);
     exit;
@@ -23,17 +22,16 @@ try {
     $params = [];
     $dateFilter = "";
     
-    // Filtro de data flexível
+    // Filtro de data
     if (!empty($startDate) && !empty($endDate)) {
-        $dateFilter = " AND DATE(c.createdAt) BETWEEN ? AND ?";
+        // Garante que a data final pegue até o último segundo do dia
+        $endDate = $endDate . " 23:59:59";
+        $dateFilter = " AND c.createdAt BETWEEN ? AND ?";
         $params[] = $startDate;
         $params[] = $endDate;
     }
 
-    // SQL OTIMIZADO:
-    // 1. Buscamos TODOS os usuários (incluindo Admins).
-    // 2. Usamos INNER JOIN com clientes para garantir que só pegamos quem realmente vendeu.
-    // 3. LOWER(c.status) garante que 'Formalizado', 'formalizado' ou 'FORMALIZADO' funcionem.
+    // SQL OTIMIZADO: Busca contratos formalizados e agrupa por consultor e usina
     $sql = "SELECT 
             u.id as userId,
             u.name as consultor,
@@ -44,11 +42,8 @@ try {
             COUNT(c.id) as qtd_por_usina
         FROM usuarios u
         LEFT JOIN setores s ON u.sectorId = s.id
-        -- Mudamos para garantir que o vínculo com o usuário exista
         INNER JOIN clientes c ON u.id = c.userId
-        -- LEFT JOIN na usina para não sumir com o cliente se a usina não estiver marcada
         LEFT JOIN usinas us ON c.usinaId = us.id
-        -- Filtro flexível para aceitar ambos os termos
         WHERE (LOWER(c.status) = 'formalizado' OR LOWER(c.status) = 'formalized') 
         $dateFilter
         GROUP BY u.id, us.id, us.name, us.comission, s.name, u.name, u.role
@@ -60,6 +55,7 @@ try {
 
     $relatorio = [];
 
+    // Formata o JSON para o frontend
     foreach ($rows as $row) {
         $id = $row['userId'];
         
@@ -90,9 +86,7 @@ try {
         }
     }
 
-    // Retorna array limpo
-    $resultado = array_values($relatorio);
-    echo json_encode($resultado);
+    echo json_encode(array_values($relatorio));
 
 } catch (PDOException $e) {
     http_response_code(500);

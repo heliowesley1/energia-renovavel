@@ -76,6 +76,7 @@ const UserDashboard: React.FC = () => {
 
   const [clients, setClients] = useState<Client[]>([]);
 
+  // OTIMIZAÇÃO: Carrega a lista (espera-se que a API retorne dados leves aqui)
   const loadData = async () => {
     try {
       const data = await api.get('/clientes.php');
@@ -89,6 +90,17 @@ const UserDashboard: React.FC = () => {
   useEffect(() => {
     if (user?.id) loadData();
   }, [user?.id]);
+
+  // OTIMIZAÇÃO: Função para buscar dados completos (com imagens) apenas quando necessário
+  const fetchFullClient = async (id: number) => {
+    try {
+      const fullData = await api.get(`/clientes.php?id=${id}`);
+      return fullData;
+    } catch (error) {
+      toast({ title: "Erro", description: "Não foi possível carregar os detalhes completos.", variant: "destructive" });
+      return null;
+    }
+  };
 
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
@@ -250,25 +262,37 @@ const UserDashboard: React.FC = () => {
     setEditingClient(null);
   };
 
-  const handleOpenDialog = (client?: Client) => {
+  // OTIMIZAÇÃO: Busca dados completos antes de abrir o modal de edição
+  const handleOpenDialog = async (client?: Client) => {
     if (client) {
-      setEditingClient(client);
+      const fullData = await fetchFullClient(client.id);
+      if (!fullData) return;
+
+      setEditingClient(fullData);
       setFormData({
-        name: client.name,
-        email: client.email || '',
-        cpf: client.cpf,
-        phone: client.phone || '',
-        observations: client.observations || '',
-        status: client.status,
-        createdAt: client.createdAt ? client.createdAt.split(' ')[0] : '',
-        imageUrl: client.imageUrl || '',
-        imageUrl2: (client as any).imageUrl2 || '',
-        imageUrl3: (client as any).imageUrl3 || '',
+        name: fullData.name,
+        email: fullData.email || '',
+        cpf: fullData.cpf,
+        phone: fullData.phone || '',
+        observations: fullData.observations || '',
+        status: fullData.status,
+        createdAt: fullData.createdAt ? fullData.createdAt.split(' ')[0] : '',
+        imageUrl: fullData.imageUrl || '',
+        imageUrl2: (fullData as any).imageUrl2 || '',
+        imageUrl3: (fullData as any).imageUrl3 || '',
       });
     } else {
       resetForm();
     }
     setIsDialogOpen(true);
+  };
+
+  // OTIMIZAÇÃO: Busca dados completos antes de abrir o modal de detalhes
+  const handleViewDetails = async (client: Client) => {
+    const fullData = await fetchFullClient(client.id);
+    if (fullData) {
+      setViewingClientDetails(fullData);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, field: 'imageUrl' | 'imageUrl2' | 'imageUrl3') => {
@@ -644,7 +668,7 @@ const UserDashboard: React.FC = () => {
                       <TableCell className="text-xs text-muted-foreground font-medium">{client.cpf}</TableCell>
                       <TableCell className="text-xs text-muted-foreground font-medium">{client.phone || '-'}</TableCell>
                       <TableCell>{getStatusBadge(client.status)}</TableCell>
-                      <TableCell className="text-center"><div className="flex items-center justify-center gap-1"><Button variant="ghost" size="icon" onClick={() => setViewingClientDetails(client)} className="text-foreground hover:text-primary hover:bg-primary/10 h-8 w-8" title="Ver Detalhes"><Eye className="w-4 h-4" /></Button><Button variant="ghost" size="icon" onClick={() => handleOpenDialog(client)} className="text-muted-foreground hover:text-amber-600 hover:bg-amber-50 h-8 w-8" title="Editar"><Edit className="w-4 h-4" /></Button></div></TableCell>
+                      <TableCell className="text-center"><div className="flex items-center justify-center gap-1"><Button variant="ghost" size="icon" onClick={() => handleViewDetails(client)} className="text-foreground hover:text-primary hover:bg-primary/10 h-8 w-8" title="Ver Detalhes"><Eye className="w-4 h-4" /></Button><Button variant="ghost" size="icon" onClick={() => handleOpenDialog(client)} className="text-muted-foreground hover:text-amber-600 hover:bg-amber-50 h-8 w-8" title="Editar"><Edit className="w-4 h-4" /></Button></div></TableCell>
                     </TableRow>
                   ))) : (<TableRow><TableCell colSpan={6} className="h-24 text-center text-muted-foreground">Nenhum cliente encontrado.</TableCell></TableRow>)}
                 </TableBody>

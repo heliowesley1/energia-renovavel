@@ -23,7 +23,6 @@ import {
   FileSignature
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-// Importações necessárias para o gráfico
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell } from 'recharts';
 
 const AdminOverview: React.FC = () => {
@@ -37,14 +36,29 @@ const AdminOverview: React.FC = () => {
   const [dbSectors, setDbSectors] = useState<any[]>([]);
   const [dbUsinas, setDbUsinas] = useState<any[]>([]);
 
+  // --- ESTADOS DE FILTROS ---
+  // OTIMIZAÇÃO: Inicia filtrando pelo mês atual para não travar o banco
+  const [periodPreset, setPeriodPreset] = useState<string>('today');
+  const [date, setDate] = useState<DateRange | undefined>({
+    from: startOfMonth(new Date()),
+    to: endOfMonth(new Date())
+  });
+
+  const [selectedSector, setSelectedSector] = useState<string>('all');
+  const [selectedUsina, setSelectedUsina] = useState<string>('all');
+  const [selectedUser, setSelectedUser] = useState<string>('all');
+  const [selectedStatus, setSelectedStatus] = useState<string>('all');
+
   useEffect(() => {
     const loadDashboardData = async () => {
       try {
-        // AJUSTE: Enviando múltiplos setores para a API
+        // Envia datas para a API filtrar no servidor (Performance)
         const queryParams = new URLSearchParams({
           role: user?.role || '',
           userId: user?.id || '',
-          sectors: user?.sectorId || '' 
+          sectors: user?.sectorId || '',
+          start_date: date?.from ? format(date.from, 'yyyy-MM-dd') : '',
+          end_date: date?.to ? format(date.to, 'yyyy-MM-dd') : ''
         }).toString();
 
         const [resClients, resUsers, resSectors, resUsinas] = await Promise.all([
@@ -68,21 +82,15 @@ const AdminOverview: React.FC = () => {
       }
     };
     if (user) loadDashboardData();
-  }, [user, api]);
-
-  // --- Estados dos Filtros ---
-  const [selectedSector, setSelectedSector] = useState<string>('all');
-  const [selectedUsina, setSelectedUsina] = useState<string>('all');
-  const [selectedUser, setSelectedUser] = useState<string>('all');
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
-  const [periodPreset, setPeriodPreset] = useState<string>('all');
-  const [date, setDate] = useState<DateRange | undefined>();
+  }, [user, api, date]); // Agora 'api' é estável graças ao useMemo no useApi.ts
 
   // --- Lógica do Gráfico de Produção ---
   const chartData = useMemo(() => {
+    if (!date?.from || !date?.to) return [];
+    
     const days = eachDayOfInterval({
-      start: startOfMonth(new Date()),
-      end: endOfMonth(new Date()),
+      start: date.from,
+      end: date.to,
     });
 
     return days.map(day => {
@@ -96,7 +104,7 @@ const AdminOverview: React.FC = () => {
         quantidade: count,
       };
     });
-  }, [dbClients]);
+  }, [dbClients, date]);
 
   // --- Handlers ---
   const handlePeriodPresetChange = (value: string) => {
@@ -106,7 +114,7 @@ const AdminOverview: React.FC = () => {
       case 'today': setDate({ from: startOfDay(today), to: endOfDay(today) }); break;
       case '7days': setDate({ from: subDays(today, 7), to: today }); break;
       case 'month': setDate({ from: startOfMonth(today), to: endOfMonth(today) }); break;
-      case 'custom': break;
+      case 'custom': break; 
       case 'all': setDate(undefined); break;
     }
   };
@@ -116,18 +124,17 @@ const AdminOverview: React.FC = () => {
     setSelectedUsina('all');
     setSelectedUser('all');
     setSelectedStatus('all');
-    setPeriodPreset('all');
-    setDate(undefined);
+    setPeriodPreset('today');
+    setDate({ from: startOfMonth(new Date()), to: endOfMonth(new Date()) });
   };
 
-  // --- LÓGICA DE FILTRAGEM CORRIGIDA PARA MÚLTIPLOS SETORES ---
+  // --- LÓGICA DE FILTRAGEM LOCAL ---
   const filteredData = useMemo(() => {
     const supervisorSectors = user?.sectorId ? user.sectorId.split(',') : [];
 
     return dbClients.filter(client => {
       const clientSectorId = client.sectorId?.toString() || '';
       
-      // AJUSTE: Se for supervisor, permite ver apenas clientes dos seus vários setores
       if (isSupervisor && !supervisorSectors.includes(clientSectorId)) return false;
 
       const matchSector = selectedSector === 'all' || clientSectorId === selectedSector;
@@ -135,6 +142,7 @@ const AdminOverview: React.FC = () => {
       const matchUser = selectedUser === 'all' || client.userId?.toString() === selectedUser;
       const matchStatus = selectedStatus === 'all' || client.status === selectedStatus;
 
+      // A API já filtrou por data, mas mantemos a verificação local por segurança
       let matchDate = true;
       if (date?.from && client.createdAt) {
         const clientDate = new Date(client.createdAt.replace(' ', 'T'));
@@ -154,7 +162,7 @@ const AdminOverview: React.FC = () => {
     
     return dbUsers.filter(u => {
       const uSector = u.sectorId?.toString() || '';
-      const isEligibleRole = u.role === 'user' || u.role === 'supervisor'; // INCLUI SUPERVISOR NO FILTRO
+      const isEligibleRole = u.role === 'user' || u.role === 'supervisor';
       
       if (isSupervisor) return isEligibleRole && supervisorSectors.includes(uSector);
       if (selectedSector !== 'all') return isEligibleRole && uSector === selectedSector;

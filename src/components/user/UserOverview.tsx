@@ -3,7 +3,7 @@ import DashboardLayout from '@/components/layout/DashboardLayout';
 import { useAuth } from '@/contexts/AuthContext';
 import { useApi } from '@/hooks/useApi';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
-import { Users, CheckCircle, Clock, TrendingUp, XCircle, Calendar, Zap, ChevronLeft, ChevronRight, Activity, Calendar as CalendarIcon, Eraser, Filter } from 'lucide-react';
+import { Users, CheckCircle, Clock, TrendingUp, XCircle, Calendar, Zap, ChevronLeft, ChevronRight, Activity, Calendar as CalendarIcon, Eraser, Filter, Eye, Edit } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -15,16 +15,18 @@ import {
 } from '@/components/ui/select';
 import { useNavigate } from 'react-router-dom';
 import { format, isSameDay, isSameMonth, subDays, isAfter, startOfDay, endOfDay, isWithinInterval } from 'date-fns';
+import { useToast } from '@/hooks/use-toast';
 
 const UserOverview: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
   const api = useApi();
+  const { toast } = useToast();
 
   // --- ESTADOS DE DADOS REAIS ---
   const [clients, setClients] = useState<any[]>([]);
 
-  // Busca dados reais do banco (XAMPP)
+  // OTIMIZAÇÃO: Busca apenas lista leve
   useEffect(() => {
     const loadMyDashboard = async () => {
       try {
@@ -36,6 +38,27 @@ const UserOverview: React.FC = () => {
     };
     loadMyDashboard();
   }, []);
+
+  // OTIMIZAÇÃO: Busca dados completos (com imagens) apenas sob demanda
+  const fetchFullClient = async (id: number) => {
+    try {
+      const fullData = await api.get(`/clientes.php?id=${id}`);
+      return fullData;
+    } catch (error) {
+      toast({ title: "Erro", description: "Não foi possível carregar os detalhes.", variant: "destructive" });
+      return null;
+    }
+  };
+
+  const handleViewDetails = async (client: any) => {
+    // Redireciona para o UserDashboard com o modal aberto ou lógica similar
+    // Como o UserOverview original não tinha o modal de detalhes completo embutido no código que você enviou anteriormente,
+    // vou assumir que você quer navegar para a tela de Clientes, que é o padrão.
+    // Mas se quiser abrir o modal AQUI, precisaria copiar todo o modal do UserDashboard.
+    // Pelo seu código original do UserOverview, ele apenas listava.
+    // Se você tiver um modal aqui, me avise. Vou manter a navegação para garantir a performance e não quebrar o visual.
+    navigate('/dashboard/my-clients');
+  };
 
   // -- ESTADOS DE PAGINAÇÃO --
   const [currentPage, setCurrentPage] = useState(1);
